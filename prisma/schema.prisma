@@ -1,0 +1,60 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model ScoringModel {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  criteria  Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  runs Run[]
+
+  @@map("scoring_models")
+}
+
+model Run {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  modelId          String   @map("model_id") @db.Uuid
+  originalFilename String   @map("original_filename")
+  totalContacts    Int      @map("total_contacts")
+  enrichedCount    Int      @map("enriched_count")
+  failedCount      Int      @map("failed_count")
+  status           String   @default("pending")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt      DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  model       ScoringModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  runResults  RunResult[]
+
+  aiSuggestedCriteria Json? @map("ai_suggested_criteria") @db.JsonB
+
+  @@map("runs")
+}
+
+model RunResult {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId              String   @map("run_id") @db.Uuid
+  rowIndex           Int      @map("row_index")
+  linkedinUrl        String   @map("linkedin_url")
+  enrichedData       Json     @map("enriched_data")
+  enrichmentStatus   String   @map("enrichment_status")
+  totalScore         Decimal  @map("total_score")
+  criterionScores    Json     @map("criterion_scores")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@map("run_results")
+}
