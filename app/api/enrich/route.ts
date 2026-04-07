@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server'
 import { z } from 'zod'
-import { prisma } from '@/lib/prisma'
-import { parseCSV } from '@/lib/csv'
-import { fetchProfile } from '@/lib/linkedapi'
+import prisma from '@/app/lib/prisma'
+import { parseCSV } from '@/app/lib/csv'
+import { fetchProfile } from '@/app/lib/linkedapi'
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -81,6 +81,10 @@ export async function POST(request: NextRequest) {
           data: {
             originalFilename: original_filename,
             status: 'enriching',
+            totalContacts: 0,
+            enrichedCount: 0,
+            failedCount: 0,
+            
           },
         })
         runId = run.id
@@ -134,9 +138,9 @@ export async function POST(request: NextRequest) {
         const result = await fetchProfile(linkedinUrl)
 
         const contactName =
-          result.profile?.full_name ??
+          (result.profile?.full_name ??
           result.profile?.first_name ??
-          linkedinUrl ||
+          linkedinUrl) ||
           `Row ${i + 1}`
 
         // Persist run_result row
@@ -145,7 +149,7 @@ export async function POST(request: NextRequest) {
             runId,
             rowIndex: i,
             linkedinUrl: linkedinUrl || `row_${i}`,
-            enrichedData: result.profile ? (result.profile as object) : undefined,
+            enrichedData: result.profile ?? undefined,
             enrichmentStatus: result.status,
           },
         })

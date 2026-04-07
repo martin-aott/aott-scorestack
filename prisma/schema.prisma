@@ -26,7 +26,7 @@ model ScoringModel {
 
 model Run {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  modelId          String   @map("model_id") @db.Uuid
+  modelId          String?  @map("model_id") @db.Uuid
   originalFilename String   @map("original_filename")
   totalContacts    Int      @map("total_contacts")
   enrichedCount    Int      @map("enriched_count")
@@ -35,7 +35,7 @@ model Run {
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   completedAt      DateTime? @map("completed_at") @db.Timestamptz(6)
 
-  model       ScoringModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  model       ScoringModel? @relation(fields: [modelId], references: [id], onDelete: Cascade)
   runResults  RunResult[]
 
   aiSuggestedCriteria Json? @map("ai_suggested_criteria") @db.JsonB
@@ -48,10 +48,10 @@ model RunResult {
   runId              String   @map("run_id") @db.Uuid
   rowIndex           Int      @map("row_index")
   linkedinUrl        String   @map("linkedin_url")
-  enrichedData       Json     @map("enriched_data")
+  enrichedData       Json?    @map("enriched_data")
   enrichmentStatus   String   @map("enrichment_status")
-  totalScore         Decimal  @map("total_score")
-  criterionScores    Json     @map("criterion_scores")
+  totalScore         Decimal? @map("total_score")
+  criterionScores    Json?    @map("criterion_scores")
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
