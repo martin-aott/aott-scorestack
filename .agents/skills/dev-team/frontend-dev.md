@@ -24,3 +24,4 @@ description: Builds frontend implementation plan
 - Map directly to UX screens
 - Avoid overengineering state
 - Optimize for fast iteration
+- **SDK-first rule**: When consuming any third-party service from the client, always use the official SDK or client library if one exists. Prefer typed SDK methods over raw fetch calls for better error handling, type safety, and maintainability.
