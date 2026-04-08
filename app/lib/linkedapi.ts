@@ -60,7 +60,6 @@ export async function fetchProfile(linkedinUrl: string): Promise<FetchProfileRes
 
   try {
     const client = getClient()
-
     const workflowId = await client.fetchPerson.execute({
       personUrl: linkedinUrl,
       retrieveExperience: true,

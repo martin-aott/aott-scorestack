@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
         const blob = await get(blob_url, {access: 'private', token: process.env.VERCEL_BLOB_TOKEN!})
         
         if (!(blob?.statusCode === 200)) {
-          throw new Error(`Blob fetch failed: ${blob?.statusCode} ${blob?.statusMessage}`)
+          throw new Error(`Blob fetch failed: ${blob?.statusCode}`)
         }
 
         csvText = await new Response(blob.stream).text()
