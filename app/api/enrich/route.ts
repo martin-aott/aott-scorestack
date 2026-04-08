@@ -4,6 +4,9 @@ import prisma from '@/app/lib/prisma'
 import { RunStatus, EnrichmentStatus } from '@/app/generated/prisma/enums'
 import { parseCSV } from '@/app/lib/csv'
 import { fetchProfile } from '@/app/lib/linkedapi'
+import { InputJsonObject } from '@prisma/client/runtime/client'
+import { error } from 'console'
+import { get } from '@vercel/blob'
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -89,7 +92,7 @@ export async function POST(request: NextRequest) {
         })
         runId = run.id
       } catch (err) {
-        send({ type: 'error', message: 'Failed to create run record' })
+        send({ type: 'error', message: 'Failed to create run record', error: err instanceof Error ? err.message : error })
         controller.close()
         return
       }
@@ -97,9 +100,14 @@ export async function POST(request: NextRequest) {
       // Fetch CSV from Vercel Blob
       let csvText: string
       try {
-        const blobRes = await fetch(blob_url)
-        if (!blobRes.ok) throw new Error(`Blob fetch failed: ${blobRes.status}`)
-        csvText = await blobRes.text()
+        const blob = await get(blob_url, {access: 'private', token: process.env.VERCEL_BLOB_TOKEN!})
+        
+        if (!(blob?.statusCode === 200)) {
+          throw new Error(`Blob fetch failed: ${blob?.statusCode} ${blob?.statusMessage}`)
+        }
+
+        const stream = await blob.stream.getReader().read();
+        csvText = new TextDecoder().decode(stream.value)
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to fetch CSV from blob'
         await prisma.run.update({ where: { id: runId }, data: { status: RunStatus.failed } })
@@ -149,7 +157,7 @@ export async function POST(request: NextRequest) {
             runId,
             rowIndex: i,
             linkedinUrl: linkedinUrl || `row_${i}`,
-            enrichedData: result.profile ?? undefined,
+            enrichedData: result.profile as unknown as InputJsonObject ?? undefined,
             enrichmentStatus: result.status as EnrichmentStatus,
           },
         })
