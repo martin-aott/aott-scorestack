@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
   const validation = UploadSchema.safeParse({ file })
   if (!validation.success) {
     return NextResponse.json(
-      { error: validation.error.errors[0]?.message ?? 'Invalid file' },
+      { error: validation.error?.message ?? 'Invalid file' },
       { status: 422 }
     )
   }
