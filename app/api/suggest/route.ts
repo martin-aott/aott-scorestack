@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { prisma } from '@/lib/prisma'
-import { EnrichmentStatus } from '@prisma/client'
-import { suggestCriteria, type EnrichedSample } from '@/lib/suggestions'
+import { EnrichmentStatus } from '@/app/generated/prisma/client'
+import prisma from '@/app/lib/prisma'
+import { suggestCriteria, type EnrichedSample } from '@/app/lib/suggestions'
 
 // ---------------------------------------------------------------------------
 // Validation
