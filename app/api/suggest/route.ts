@@ -77,11 +77,9 @@ export async function POST(request: NextRequest) {
   try {
     criteria = await suggestCriteria(enrichedSample)
   } catch (err) {
-    console.error('[suggest] suggestCriteria failed:', err)
-    return NextResponse.json(
-      { error: 'Unable to generate suggestions right now. Please try again later.' },
-      { status: 500 },
-    )
+    const message = err instanceof Error ? err.message : 'AI suggestion failed'
+    console.error('[suggest] suggestCriteria failed:', message)
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 
   // Persist to runs.ai_suggested_criteria for audit trail
