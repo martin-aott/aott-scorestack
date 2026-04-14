@@ -4,7 +4,7 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../app/generated/prisma"
 }
 
@@ -27,48 +27,47 @@ enum EnrichmentStatus {
 }
 
 model ScoringModel {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id        String   @id @default(uuid())
   name      String
   criteria  Json
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  runs Run[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  runs      Run[]
 
   @@map("scoring_models")
 }
 
 model Run {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  modelId          String?  @map("model_id") @db.Uuid
-  originalFilename String   @map("original_filename")
-  totalContacts    Int      @map("total_contacts")
-  enrichedCount    Int      @map("enriched_count")
-  failedCount      Int      @map("failed_count")
-  status           RunStatus @default(pending)
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  completedAt      DateTime? @map("completed_at") @db.Timestamptz(6)
-
-  model       ScoringModel? @relation(fields: [modelId], references: [id], onDelete: Cascade)
-  runResults  RunResult[]
-
-  aiSuggestedCriteria Json? @map("ai_suggested_criteria") @db.JsonB
+  id                  String        @id @default(uuid())
+  modelId             String?       @map("model_id")
+  model               ScoringModel? @relation(fields: [modelId], references: [id])
+  originalFilename    String        @map("original_filename")
+  totalContacts       Int           @default(0) @map("total_contacts")
+  enrichedCount       Int           @default(0) @map("enriched_count")
+  failedCount         Int           @default(0) @map("failed_count")
+  status              RunStatus     @default(pending)
+  aiSuggestedCriteria Json?         @map("ai_suggested_criteria")
+  scoringCriteria     Json?         @map("scoring_criteria")
+  avgEnrichmentMs     Int?          @map("avg_enrichment_ms")
+  totalEnrichmentMs   Int?          @map("total_enrichment_ms")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  completedAt         DateTime?     @map("completed_at")
+  results             RunResult[]
 
   @@map("runs")
 }
 
 model RunResult {
-  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  runId              String   @map("run_id") @db.Uuid
-  rowIndex           Int      @map("row_index")
-  linkedinUrl        String   @map("linkedin_url")
-  enrichedData       Json?    @map("enriched_data")
-  enrichmentStatus   EnrichmentStatus @map("enrichment_status")
-  totalScore         Decimal? @map("total_score")
-  criterionScores    Json?    @map("criterion_scores")
-  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+  id               String           @id @default(uuid())
+  runId            String           @map("run_id")
+  run              Run              @relation(fields: [runId], references: [id])
+  rowIndex         Int              @map("row_index")
+  linkedinUrl      String           @map("linkedin_url")
+  enrichedData     Json?            @map("enriched_data")
+  enrichmentStatus EnrichmentStatus @map("enrichment_status")
+  totalScore       Decimal?         @map("total_score")
+  criterionScores  Json?            @map("criterion_scores")
+  createdAt        DateTime         @default(now()) @map("created_at")
 
   @@map("run_results")
 }
