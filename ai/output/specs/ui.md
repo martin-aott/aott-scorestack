@@ -33,30 +33,27 @@
 
 **Notes:**
 - No sign-up page — first sign-in creates the account automatically
-- After first sign-in, redirect to `/onboarding` if `User.orgId` is null
+- After sign-in, NextAuth redirects to `callbackUrl`. First-time-user detection happens at the destination page via `session.user.orgName === "My Workspace"`. The sign-in page has no special onboarding redirect.
 - The page is a server component: `auth()` is called before rendering. If a session exists, the user is redirected straight to `callbackUrl`. This handles the case where a notify-me user clicks the email link while already signed in — they land directly on the score page without seeing the form.
 
 ---
 
 ### 2. Onboarding (`/onboarding`)
 
-**Shown:** Once, immediately after first sign-in.
+**Trigger:** Authenticated user with `session.user.orgName === "My Workspace"`. Any auth-required page redirects here instead of rendering normally.
 
-**Step 1 — Org name:**
-- "What's your team or company name?"
-- Text input (auto-populated with email domain if available)
-- CTA: "Continue"
+**Layout:** Centered card, max-w-sm, same visual language as the sign-in page.
 
-**Step 2 — Optional invite:**
-- "Invite a teammate" (shown only if plan supports it — skipped on Free)
-- Email input + "Send invite" button
-- Skip link: "I'll do this later"
+**Content:**
+- Heading: "Name your workspace"
+- Sub-copy: "This is how your team and scoring models will be labelled."
+- Text input — label: "Workspace name", placeholder: derived from email domain (e.g. `martin@acme.com` → `"Acme"`)
+- CTA button: "Get started"
+- States: Default → Submitting → redirect to `/`
 
-**Step 3 — Plan choice (optional):**
-- Brief comparison of Free vs Starter vs Pro
-- "Start free" (default) + "Start Pro trial (14 days free)"
+**Validation:** Non-empty, ≤ 80 characters.
 
-**On completion:** Redirect to `/` (home).
+**On submit:** `PATCH /api/org { name }` → on 200: redirect to `/`.
 
 ---
 
@@ -77,14 +74,13 @@
 
 **Position:** Below the main nav, above page content. Present on all authenticated pages.
 
-**Content:** `{contactsUsed} / {contactsLimit} contacts used this month · Resets {resetDate}` + "Upgrade" link (if not enterprise).
+**Content by plan:**
 
-**Visual:**
-- Progress bar: green if < 70%, amber if 70–90%, red if > 90%
-- "Upgrade" link opens `UpgradeModal`
-- Free tier: shows `50 / 50 per run` (not monthly, since free is per-run limited)
+- **Free:** `"Free plan · 50 contacts per run"` + "Upgrade →" link. No progress bar — limit is per-run, not cumulative.
+- **Starter / Pro:** `"{managedCreditsBalance} enrichment credits remaining"` + "Buy more →" link → `/settings/billing`. Progress bar: green if > 200, amber if 51–200, red if ≤ 50.
+- **Enterprise:** Hidden — no credit cap.
 
-**Hidden:** If plan is enterprise or if limit is -1.
+No `resetDate` or `contactsUsedThisMonth` — the quota model uses a per-run cap (free) or a pre-purchased credit balance (paid), neither of which resets on a schedule.
 
 ---
 

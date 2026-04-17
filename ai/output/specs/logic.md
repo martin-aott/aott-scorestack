@@ -7,11 +7,40 @@ Enrichment of large contact lists can take several minutes. Users should not be 
 
 ### Session gate rules
 
-| Page | No session behaviour |
-|------|---------------------|
-| `/` (upload + enrichment choice) | Public — no gate |
-| `/run/:id/score` | `redirect('/auth/signin?callbackUrl=/run/:id/score')` |
-| `/run/:id/results` | Inline sign-in prompt — "Scored contact lists are private. Sign in to access your ranked results." Not a redirect. |
+Three-tier gate applied in every auth-required server component:
+
+| Page | No session | Session + "My Workspace" | Session + named workspace |
+|------|-----------|--------------------------|--------------------------|
+| `/` (upload + enrichment choice) | Public | Show normally | Show normally |
+| `/run/:id/score` | `redirect('/auth/signin?callbackUrl=/run/:id/score')` | `redirect('/onboarding')` | Show page |
+| `/run/:id/results` | Inline sign-in prompt — not a redirect | `redirect('/onboarding')` | Show page |
+| `/settings/*` | `redirect('/auth/signin')` | `redirect('/onboarding')` | Show page |
+| `/onboarding` | `redirect('/auth/signin')` | Show onboarding screen | `redirect('/')` |
+
+### Onboarding gate
+
+**Detection:** `session.user.orgName === "My Workspace"` — the default name set by the `signIn` callback during org auto-bootstrap.
+
+**Where applied:** Every auth-required server component checks at the top:
+```ts
+if (session?.user?.orgName === "My Workspace") redirect("/onboarding")
+```
+
+**`PATCH /api/org` — workspace name update:**
+- Auth required
+- Body: `{ name: string }`
+- Validates: non-empty, ≤ 80 chars
+- Updates `Organization.name` for `session.user.orgId`
+- Returns `200 { name }`
+
+**Session shape** — the JWT and session callbacks must expose `orgName`:
+```ts
+// JWT callback (load on sign-in):
+token.orgName = (await prisma.organization.findUnique({ where: { id: user.orgId } }))?.name
+
+// Session callback:
+session.user.orgName = token.orgName as string | undefined
+```
 
 ### Pre-enrichment notification (optional, non-blocking)
 
