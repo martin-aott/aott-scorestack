@@ -33,14 +33,38 @@
 
 **Notes:**
 - No sign-up page — first sign-in creates the account automatically
-- After sign-in, NextAuth redirects to `callbackUrl`. First-time-user detection happens at the destination page via `session.user.orgName === "My Workspace"`. The sign-in page has no special onboarding redirect.
-- The page is a server component: `auth()` is called before rendering. If a session exists, the user is redirected straight to `callbackUrl`. This handles the case where a notify-me user clicks the email link while already signed in — they land directly on the score page without seeing the form.
+- `SignInForm` wraps the `callbackUrl` through `/auth/confirmed?next=<callbackUrl>` before calling `signIn()`. This routes every magic-link sign-in through the confirmation page.
+- The page is a server component: `auth()` is called before rendering. If a session exists, the user is redirected straight to `callbackUrl` (bypasses the confirmation page — they're already signed in).
+
+---
+
+### 1b. Auth Confirmation (`/auth/confirmed`)
+
+**Shown:** Immediately after a magic link is clicked and the session is created. Every sign-in flows through this page — direct and notify-me.
+
+**Layout:** Centered card, max-w-sm, same visual language as the sign-in page.
+
+**Content:**
+- Green checkmark icon
+- Heading: "You're signed in"
+- Sub-copy: "Signed in as {email}"
+- Progress bar animating over 2.5s → auto-redirects to `next` param on completion
+- "Continue →" link for immediate navigation without waiting
+
+**Server component (`page.tsx`):**
+- Reads `next` query param; sanitises to relative paths only (open-redirect guard)
+- If no session: `redirect('/auth/signin?callbackUrl=<next>')` (magic link expired or already used)
+- If session: render `ConfirmedClient` with `{ email, next }`
+
+**Client component (`ConfirmedClient.tsx`):**
+- `useEffect` with 2500ms timeout → `router.push(next)`
+- Progress bar uses a CSS `@keyframes grow` animation timed to match the delay
 
 ---
 
 ### 2. Onboarding (`/onboarding`)
 
-**Trigger:** Authenticated user with `session.user.orgName === "My Workspace"`. Any auth-required page redirects here instead of rendering normally.
+**Trigger:** `session.user.orgName === "My Workspace"`. Auth-required server components render `<WorkspaceNamePrompt>` as a fixed overlay (`z-50`) on the current page — the user never navigates away. `router.refresh()` after a successful `PATCH /api/org` re-runs the server component, the session callback fetches the updated `orgName` from DB, and the overlay unmounts. `/onboarding` exists as a standalone fallback for direct navigation only.
 
 **Layout:** Centered card, max-w-sm, same visual language as the sign-in page.
 
@@ -49,11 +73,11 @@
 - Sub-copy: "This is how your team and scoring models will be labelled."
 - Text input — label: "Workspace name", placeholder: derived from email domain (e.g. `martin@acme.com` → `"Acme"`)
 - CTA button: "Get started"
-- States: Default → Submitting → redirect to `/`
+- States: Default → Submitting → overlay dismissed via `router.refresh()`
 
 **Validation:** Non-empty, ≤ 80 characters.
 
-**On submit:** `PATCH /api/org { name }` → on 200: redirect to `/`.
+**On submit:** `PATCH /api/org { name }` → on 200: `router.refresh()` (inline) or `router.push(callbackUrl)` (standalone page).
 
 ---
 
@@ -322,7 +346,8 @@ Main flows:
   /settings/billing     Billing
   /settings/team        Team management
   /auth/signin          Sign in
-  /onboarding           First-run setup
+  /auth/confirmed       Post-login confirmation (auto-redirects to next)
+  /onboarding           First-run workspace setup (standalone fallback)
 ```
 
 ---
@@ -335,6 +360,7 @@ Main flows:
 | EnrichmentProgress | `app/components/EnrichmentProgress.tsx` | ✅ Built — `notifyEmail` prop, confirmation banner |
 | EmailGate | `app/components/EmailGate.tsx` | ⚠️ Retired — soft email gate replaced by session requirement |
 | NotificationCheckGate | `app/components/NotificationCheckGate.tsx` | ⚠️ Retired — replaced by session gate on score/results pages |
+| WorkspaceNamePrompt | `app/components/WorkspaceNamePrompt.tsx` | ✅ Built — fixed overlay; `router.refresh()` on submit |
 | SaveModelButton | `app/components/SaveModelButton.tsx` | ✅ Built — authenticated state only |
 | SaveModelModal | `app/components/SaveModelModal.tsx` | ✅ Built — 409 upgrade prompt inline |
 | ActivationBanner | `app/components/ActivationBanner.tsx` | ✅ Built — shown on `?activated=1`, cleans URL |

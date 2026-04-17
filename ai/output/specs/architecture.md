@@ -76,7 +76,7 @@
 Upload and enrichment are public. Auth-required pages apply a three-tier gate:
 
 1. **No session** → sign-in redirect (or inline prompt for the results page)
-2. **Session + `orgName === "My Workspace"`** → redirect `/onboarding`
+2. **Session + `orgName === "My Workspace"`** → `WorkspaceNamePrompt` overlay rendered on the current page — no navigation
 3. **Session + named workspace** → page renders normally
 
 **Public routes (no session required):**
@@ -111,7 +111,7 @@ Upload and enrichment are public. Auth-required pages apply a three-tier gate:
 ### Notify-me flow (unauthenticated user)
 1. User chooses "Notify me" in `EnrichmentChoice`, enters email → stored as `Run.notifyEmail`, passed in `POST /api/enrich` body
 2. Enrichment completes → `sendEnrichmentComplete()` sends one CTA: **"Sign in to view your results →"** → `/auth/signin?callbackUrl=/run/:id/score`
-3. User clicks link → signs in → session created → redirected to score page
+3. User clicks link → `/auth/signin` → enters email → `SignInForm` wraps callbackUrl through `/auth/confirmed?next=/run/:id/score` → magic link sent → user clicks → session created → `/auth/confirmed` shows confirmation → auto-redirects to score page
 
 ### Middleware protection
 - `middleware.ts` only protects auth-required routes (listed above)
