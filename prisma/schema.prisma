@@ -159,8 +159,25 @@ model Organization {
   deliveryJobs     DeliveryJob[]
   usageLogs        UsageLog[]
   creditPurchases  CreditPurchase[]
+  pendingCheckouts PendingCheckout[]
 
   @@map("organizations")
+}
+
+model PendingCheckout {
+  id           String    @id @default(cuid())
+  orgId        String    @map("org_id")
+  lsCheckoutId String    @unique @map("ls_checkout_id")
+  variantId    String    @map("variant_id")
+  plan         Plan?                   // set for subscription checkouts
+  credits      Int?                    // set for credit-pack checkouts
+  confirmedAt  DateTime? @map("confirmed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
+  @@map("pending_checkouts")
 }
 
 model Subscription {
