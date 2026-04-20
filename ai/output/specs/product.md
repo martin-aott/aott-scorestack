@@ -1,5 +1,5 @@
 # Scorestack — Product Specification (Growth)
-_Last refined: SPEC::REFINE — pre-enrichment choice, activation-aware save flow, BYOK delivery-only_
+_Last refined: SPEC::REFINE Phase 3 post-mvp — Pro price $49, credit pack checkout + webhook, usage API shape, billing/upgrade UI copy_
 
 ## Overview
 

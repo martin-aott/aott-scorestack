@@ -279,13 +279,15 @@ Add a tab bar below the run summary:
 
 **Content:**
 - Current plan name + price
-- Usage bar (contacts this month)
-- "Upgrade" / "Change plan" CTA → Stripe Checkout
-- "Manage invoices & payment methods" → Stripe Portal
-- Subscription status badge (active / trialing / past due)
-- Renewal date
+- **Free plan:** "50 contacts per run limit" — no bar, just text + "Upgrade to Starter" CTA
+- **Starter / Pro plan:** Credit balance bar — "{managedCreditsBalance} enrichment credits remaining" + "Buy more credits →" (opens credit pack selector). Thresholds: green > 200, amber 51–200, red ≤ 50.
+- **Enterprise:** No credit bar
+- "Upgrade" / "Change plan" CTA → Lemon Squeezy hosted checkout
+- "Manage invoices & payment methods" → Lemon Squeezy Customer Portal
+- Subscription status badge (active / trialing / past_due)
+- Renewal date (from `Subscription.currentPeriodEnd`; hidden on Free)
 
-**Success state (after Stripe redirect):**
+**Success state (after Lemon Squeezy redirect with `?success=1`):**
 - Green banner: "You're now on the {plan} plan. Enjoy!"
 
 ---
@@ -320,7 +322,7 @@ Add a tab bar below the run summary:
 **Content:**
 - Heading based on trigger: "Export your full results", "Generate AI messages", "Automate outreach delivery", "Invite your team"
 - Plan comparison table (3 columns: Free / Starter / Pro), feature rows highlighted based on trigger
-- CTA: "Start Starter — $29/mo" or "Start Pro — $79/mo" or "Start Pro trial (14 days free)"
+- CTA: "Start Starter — $29/mo" or "Start Pro — $49/mo" or "Start Pro trial (14 days free)"
 - Dismiss: "Maybe later" link
 
 **On CTA click:**

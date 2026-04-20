@@ -83,9 +83,14 @@ Phases must be executed in order. Each phase's output is a hard dependency for t
 
 - [ ] **T-11** Create `app/lib/billing.ts`
   - `createCheckout(orgId, plan)` → LS Checkout API → `checkout_url`
+  - `createCreditCheckout(orgId, packId)` → LS one-time product checkout → `checkout_url`
+    - `packId`: one of `'credits_100' | 'credits_500' | 'credits_1500' | 'credits_5000'`
+    - Maps to `LEMONSQUEEZY_CREDITS_{N}_PRODUCT_ID` env var
+    - `custom_data`: `{ orgId, credits: N }` — echoed back in `order_created` webhook
   - `createPortalUrl(lsCustomerId)` → LS portal URL
   - `getPlanFromVariantId(variantId)` → `Plan` enum
-  - Env vars: `LEMONSQUEEZY_API_KEY`, `LEMONSQUEEZY_STORE_ID`, `LEMONSQUEEZY_STARTER_VARIANT_ID`, `LEMONSQUEEZY_PRO_VARIANT_ID`
+    - Compare against `LEMONSQUEEZY_STARTER_VARIANT_ID` → `'starter'`; `LEMONSQUEEZY_PRO_VARIANT_ID` → `'pro'`; else → `null`
+  - Env vars: `LEMONSQUEEZY_API_KEY`, `LEMONSQUEEZY_STORE_ID`, `LEMONSQUEEZY_STARTER_VARIANT_ID`, `LEMONSQUEEZY_PRO_VARIANT_ID`, `LEMONSQUEEZY_CREDITS_{100|500|1500|5000}_PRODUCT_ID`
 
 - [ ] **T-12** Create `app/api/billing/checkout/route.ts`
   - `POST { plan }` → auth → `createCheckout` → `{ checkout_url }`
@@ -95,23 +100,40 @@ Phases must be executed in order. Each phase's output is a hard dependency for t
 
 - [ ] **T-14** Create `app/api/webhooks/lemonsqueezy/route.ts`
   - Verify `X-Signature` (HMAC-SHA256, `LEMONSQUEEZY_WEBHOOK_SECRET`)
+  - Must use raw body for signature verification — do NOT call `req.json()` before hashing
   - `subscription_created` → upsert `Organization.plan` + `lsCustomerId`, create `Subscription`, reset usage
   - `subscription_updated` → update `Subscription` + `Organization.plan`
   - `subscription_cancelled` → set `cancelAtPeriodEnd = true`
-  - `subscription_expired` → downgrade org to `free`
-  - `subscription_payment_failed` → set `status = 'past_due'`
+  - `subscription_expired` → set `Organization.plan = 'free'`, update `Subscription.status = 'expired'`
+  - `subscription_payment_failed` → set `status = 'past_due'` (3-day grace — do NOT immediately downgrade)
+  - `order_created` → credit pack purchase handler:
+    - `credits = meta.custom_data.credits` (integer)
+    - `orgId  = meta.custom_data.orgId`
+    - `lsOrderId = data.id`
+    - `INSERT CreditPurchase { orgId, lsOrderId, credits, amountCents: data.attributes.total }`
+    - `UPDATE Organization SET managedCreditsBalance += credits` (atomic — use Prisma `increment`)
+    - Idempotent: skip if `CreditPurchase` with `lsOrderId` already exists
+
+- [ ] **T-14b** Create `app/api/billing/credits/route.ts`
+  - `POST { packId }` → auth → `createCreditCheckout(orgId, packId)` → `{ checkout_url }`
+  - Valid `packId` values: `'credits_100' | 'credits_500' | 'credits_1500' | 'credits_5000'`
+  - 400 on invalid `packId`; 401 if not authenticated; 503 if `orgId` missing
 
 - [ ] **T-15** Create `app/settings/billing/page.tsx`
-  - Fetch `/api/usage` → show plan, renewal date, usage bar
-  - Upgrade CTA → `POST /api/billing/checkout` → redirect
-  - Manage invoices → `POST /api/billing/portal` → redirect
-  - `?success=1` param → success banner
+  - Fetch `/api/usage` → show plan, renewal date, credit balance bar
+  - **Free:** "50 contacts per run" info block + "Upgrade to Starter" CTA
+  - **Starter / Pro:** Credit balance bar (thresholds: green >200, amber 51–200, red ≤50) + "Buy more credits" button → `POST /api/billing/credits` → redirect to LS checkout
+  - Subscription status badge (active / trialing / past_due); renewal date from `Subscription.currentPeriodEnd`
+  - Upgrade / change plan CTA → `POST /api/billing/checkout` → redirect to Lemon Squeezy hosted checkout
+  - Manage invoices → `POST /api/billing/portal` → redirect to Lemon Squeezy Customer Portal
+  - `?success=1` param → green success banner "You're now on the {plan} plan. Enjoy!"
 
 - [ ] **T-16** Create `app/components/UpgradeModal.tsx`
   - Props: `trigger: string`, `requiredPlan: Plan`
   - Plan comparison table (Free / Starter / Pro)
-  - CTA → `POST /api/billing/checkout` → full-page redirect
-  - Dismiss link
+  - CTA label: "Start Starter — $29/mo" or "Start Pro — $49/mo" or "Start Pro trial (14 days free)"
+  - CTA → `POST /api/billing/checkout { plan }` → full-page redirect to `checkout_url`
+  - Dismiss link: "Maybe later"
 
 ---
 
@@ -129,13 +151,30 @@ Phases must be executed in order. Each phase's output is a hard dependency for t
   - 402 body: `{ error: 'quota_exceeded', used, limit, plan, upgrade_url }`
 
 - [ ] **T-19** Create `app/api/usage/route.ts`
-  - `GET` → `{ plan, contactsUsed, contactsLimit, resetDate, modelsUsed, modelsLimit, seats, seatsLimit }`
+  - `GET` → auth → query org:
+  ```ts
+  {
+    plan: Plan,
+    managedCreditsBalance: number,   // from Organization.managedCreditsBalance
+    contactsPerRunLimit: number,     // 50 for free; -1 for all paid plans (unlimited)
+    modelsUsed: number,              // count of ScoringModel where orgId = session.user.orgId
+    modelsLimit: number,             // 1 free | 5 starter | -1 pro/enterprise
+    seats: number,                   // count of User where orgId = session.user.orgId
+    seatsLimit: number               // 1 free/starter | 3 pro | -1 enterprise
+  }
+  ```
+  - No `contactsUsed`, no `resetDate` — quota is per-run cap (free) or credit balance (paid), neither resets monthly
+  - If `session.user.orgId` is null: return 503 `{ error: 'account_setup_incomplete' }`
 
 - [ ] **T-20** Create `app/components/UsageBanner.tsx`
   - Fetch `/api/usage`
-  - Progress bar: green <70% / amber 70–90% / red >90%
-  - Upgrade link → `<UpgradeModal />`
-  - Hidden if `plan === 'enterprise'` or limit is `-1`
+  - **Free plan:** Text only — "Free plan · 50 contacts per run" + "Upgrade →" link. No progress bar.
+  - **Starter / Pro:** Progress bar showing `managedCreditsBalance` credits remaining.
+    - Green if > 200 credits, amber if 51–200, red if ≤ 50
+    - Label: "{balance} enrichment credits remaining"
+    - "Buy more →" link → `/settings/billing`
+  - **Enterprise:** Hidden entirely
+  - Skip render when `status !== 'authenticated'` (useSession)
 
 ---
 
@@ -331,6 +370,7 @@ Phases must be executed in order. Each phase's output is a hard dependency for t
 | `app/components/Nav.tsx` | 2 |
 | `app/lib/billing.ts` | 3 |
 | `app/api/billing/checkout/route.ts` | 3 |
+| `app/api/billing/credits/route.ts` | 3 |
 | `app/api/billing/portal/route.ts` | 3 |
 | `app/api/webhooks/lemonsqueezy/route.ts` | 3 |
 | `app/settings/billing/page.tsx` | 3 |
@@ -388,8 +428,16 @@ RESEND_FROM_EMAIL=noreply@scorestack.io
 LEMONSQUEEZY_API_KEY=
 LEMONSQUEEZY_WEBHOOK_SECRET=
 LEMONSQUEEZY_STORE_ID=
-LEMONSQUEEZY_STARTER_VARIANT_ID=
-LEMONSQUEEZY_PRO_VARIANT_ID=
+LEMONSQUEEZY_STARTER_VARIANT_ID=      # $29/mo subscription variant
+LEMONSQUEEZY_PRO_VARIANT_ID=          # $49/mo subscription variant
+
+# Credit pack one-time product IDs
+LEMONSQUEEZY_CREDITS_100_PRODUCT_ID=
+LEMONSQUEEZY_CREDITS_500_PRODUCT_ID=
+LEMONSQUEEZY_CREDITS_1500_PRODUCT_ID=
+LEMONSQUEEZY_CREDITS_5000_PRODUCT_ID=
 
 DELIVERY_DELAY_MS=3000
+
+ENCRYPTION_KEY=                        # 32-byte hex string — used for AES-256 BYOK credential encryption (Phase 8)
 ```

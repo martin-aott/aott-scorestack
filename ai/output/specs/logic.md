@@ -361,7 +361,7 @@ Lemon Squeezy acts as **Merchant of Record** — they collect payments from cust
 ### Variant IDs (configured via env vars)
 
 - `LEMONSQUEEZY_STARTER_VARIANT_ID` → $29/mo recurring variant
-- `LEMONSQUEEZY_PRO_VARIANT_ID` → $79/mo recurring variant
+- `LEMONSQUEEZY_PRO_VARIANT_ID` → $49/mo recurring variant
 
 ### Checkout session creation
 
