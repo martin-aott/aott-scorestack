@@ -1,5 +1,5 @@
 # Scorestack — Product Specification (Growth)
-_Last refined: SPEC::REFINE Phase 3 post-billing — workspace concept removed, cookie-based auth_next flow, in-browser notify-me "Check your inbox" UX, PendingCheckout billing confirmation pattern_
+_Last refined: SPEC::REFINE Phase 4 post-deploy fixes — cross-device auth redirect (destination in callbackUrl URL param + cookie fallback), fault-tolerant session callback, appUrl() env-var chain, root error boundary + not-found page_
 
 ## Overview
 

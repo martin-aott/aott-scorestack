@@ -33,7 +33,7 @@
 
 **Notes:**
 - No sign-up page — first sign-in creates the account automatically.
-- `SignInPage` (server component) sets an `auth_next` cookie (`encodeURIComponent(destination); max-age=600; SameSite=Lax`) then passes `callbackUrl: '/auth/confirmed'` to `SignInForm`. Magic-link is sent to `/auth/confirmed`; the confirmed page reads the cookie and redirects to the real destination.
+- `SignInForm` sets an `auth_next` cookie (`encodeURIComponent(destination); max-age=600; SameSite=Lax`) AND sends the magic link with `callbackUrl: '/auth/confirmed?next=<encodedDestination>'`. The destination is in both places: the cookie works for same-browser flows; the URL param works when the email is opened on a different device.
 - If a session already exists: server component `redirect(destination)` immediately — form never shown.
 - `/auth/verified` still exists for `SaveModelButton`'s direct-to-NextAuth callbackUrl path (passes `next` as query param). It decodes `searchParams.next` before the `startsWith('/')` guard.
 
@@ -53,8 +53,8 @@
 - "Continue →" link for immediate navigation without waiting
 
 **Server component (`page.tsx`):**
-- Reads `next` query param; sanitises to relative paths only (open-redirect guard)
-- If no session: `redirect('/auth/signin?callbackUrl=<next>')` (magic link expired or already used)
+- Reads `next` from `searchParams.next` (URL param from `callbackUrl`); falls back to `auth_next` cookie; default `/`. Both paths sanitise to relative paths only (open-redirect guard: `startsWith('/')`)
+- If no session: `redirect('/auth/signin')` (magic link expired or already used)
 - If session: render `ConfirmedClient` with `{ email, next }`
 
 **Client component (`ConfirmedClient.tsx`):**
@@ -353,10 +353,14 @@ Main flows:
   /settings/billing     Billing
   /settings/team        Team management
   /auth/signin          Sign in
-  /auth/confirmed       Post-login confirmation (auto-redirects to auth_next cookie destination)
+  /auth/confirmed       Post-login confirmation (reads next from URL param, cookie fallback)
   /auth/verified        SaveModelButton direct-to-NextAuth redirect landing
   /settings/billing/confirmation  Post-checkout confirmation (PendingCheckout pattern)
   /onboarding           Stub — redirect('/') only
+
+Error pages (app router root):
+  app/error.tsx         Root error boundary — catches unhandled server component exceptions
+  app/not-found.tsx     Custom 404 page — shown for notFound() calls or unknown routes
 ```
 
 ---

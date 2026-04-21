@@ -38,13 +38,17 @@ session.user = {
 
 All magic-link sign-ins follow the same pattern regardless of trigger:
 
-1. **`SignInPage`** (`/auth/signin`): sets `auth_next` cookie (`encodeURIComponent(destination); max-age=600; SameSite=Lax`) then calls `signIn('resend', { callbackUrl: '/auth/confirmed' })`.
-2. NextAuth sends the magic link. On click, NextAuth creates the session and redirects to `/auth/confirmed`.
-3. **`/auth/confirmed`** (server component): reads and decodes the `auth_next` cookie, clears it, validates `startsWith('/')`, passes destination to `ConfirmedClient`.
-4. **`ConfirmedClient`**: shows "You're signed in" + 2.5s progress bar → `router.push(destination)`.
+1. **`SignInPage`** (`/auth/signin`): sets `auth_next` cookie (`encodeURIComponent(destination); max-age=600; SameSite=Lax`) AND calls `signIn('resend', { callbackUrl: '/auth/confirmed?next=<encodeURIComponent(destination)>' })`. Destination is encoded in **both** the cookie and the URL param so the flow works correctly even when the magic link is opened on a different device (where the cookie is absent).
+2. NextAuth sends the magic link. On click, NextAuth creates the session and redirects to `/auth/confirmed?next=<encodedDestination>`.
+3. **`/auth/confirmed`** (server component): reads `next` from `searchParams.next` first (URL param, open-redirect guard: `startsWith('/')`), falls back to `auth_next` cookie, defaults to `/`. Passes destination to `ConfirmedClient`.
+4. **`ConfirmedClient`**: shows "You're signed in" + 2.5s progress bar → `router.push(destination)`. Clears `auth_next` cookie on mount.
 5. **`/auth/verified`** still exists for `SaveModelButton`'s direct-to-NextAuth callbackUrl path. It decodes `searchParams.next` (`decodeURIComponent` before `startsWith('/')` check) and redirects.
 
 If already authenticated when reaching `/auth/signin`: server component `redirect(destination)` immediately.
+
+### Session callback resilience
+
+The `session` callback in `auth.ts` wraps its `prisma.user.findUnique` call in a `try/catch`. On DB failure it returns the session with `orgId: null` and `role: 'member'` rather than propagating the exception. This prevents a cold-start DB hiccup from crashing any page that calls `auth()` and producing a Vercel NOT_FOUND.
 
 ### Pre-enrichment notification (optional, non-blocking)
 
@@ -405,6 +409,7 @@ POST /api/billing/checkout { plan }
         },
         product_options: {
           redirect_url: `${APP_URL}/settings/billing/confirmation`
+          // APP_URL = process.env.NEXTAUTH_URL ?? `https://${process.env.VERCEL_URL}` ?? 'http://localhost:3000'
         }
       },
       relationships: {
