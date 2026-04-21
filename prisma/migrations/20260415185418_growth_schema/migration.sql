@@ -36,9 +36,9 @@ ALTER TABLE "runs" DROP CONSTRAINT "runs_model_id_fkey";
 -- AlterTable
 ALTER TABLE "run_results" DROP CONSTRAINT "run_results_pkey",
 ALTER COLUMN "id" DROP DEFAULT,
-ALTER COLUMN "id" SET DATA TYPE TEXT,
-ALTER COLUMN "run_id" SET DATA TYPE TEXT,
-ALTER COLUMN "created_at" SET DATA TYPE TIMESTAMP(3),
+ALTER COLUMN "id" SET DATA TYPE TEXT USING id::text,
+ALTER COLUMN "run_id" SET DATA TYPE TEXT USING run_id::text,
+ALTER COLUMN "created_at" SET DATA TYPE TIMESTAMP(3) USING created_at::timestamp(3),
 ADD CONSTRAINT "run_results_pkey" PRIMARY KEY ("id");
 
 -- AlterTable
@@ -50,22 +50,22 @@ ADD COLUMN     "scoring_criteria" JSONB,
 ADD COLUMN     "total_enrichment_ms" INTEGER,
 ADD COLUMN     "user_id" TEXT,
 ALTER COLUMN "id" DROP DEFAULT,
-ALTER COLUMN "id" SET DATA TYPE TEXT,
-ALTER COLUMN "model_id" SET DATA TYPE TEXT,
+ALTER COLUMN "id" SET DATA TYPE TEXT USING id::text,
+ALTER COLUMN "model_id" SET DATA TYPE TEXT USING model_id::text,
 ALTER COLUMN "total_contacts" SET DEFAULT 0,
 ALTER COLUMN "enriched_count" SET DEFAULT 0,
 ALTER COLUMN "failed_count" SET DEFAULT 0,
-ALTER COLUMN "created_at" SET DATA TYPE TIMESTAMP(3),
-ALTER COLUMN "completed_at" SET DATA TYPE TIMESTAMP(3),
+ALTER COLUMN "created_at" SET DATA TYPE TIMESTAMP(3) USING created_at::timestamp(3),
+ALTER COLUMN "completed_at" SET DATA TYPE TIMESTAMP(3) USING completed_at::timestamp(3),
 ADD CONSTRAINT "runs_pkey" PRIMARY KEY ("id");
 
 -- AlterTable
 ALTER TABLE "scoring_models" DROP CONSTRAINT "scoring_models_pkey",
 ADD COLUMN     "org_id" TEXT,
 ALTER COLUMN "id" DROP DEFAULT,
-ALTER COLUMN "id" SET DATA TYPE TEXT,
-ALTER COLUMN "created_at" SET DATA TYPE TIMESTAMP(3),
-ALTER COLUMN "updated_at" SET DATA TYPE TIMESTAMP(3),
+ALTER COLUMN "id" SET DATA TYPE TEXT USING id::text,
+ALTER COLUMN "created_at" SET DATA TYPE TIMESTAMP(3) USING created_at::timestamp(3),
+ALTER COLUMN "updated_at" SET DATA TYPE TIMESTAMP(3) USING updated_at::timestamp(3),
 ADD CONSTRAINT "scoring_models_pkey" PRIMARY KEY ("id");
 
 -- CreateTable
