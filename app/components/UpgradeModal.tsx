@@ -30,7 +30,7 @@ const PLAN_FEATURES = [
 
 function userMessage(code: string, status: number): string {
   if (code === 'unauthorized')             return 'You need to be signed in to change your plan.'
-  if (code === 'account_setup_incomplete') return 'Please finish setting up your workspace first.'
+  if (code === 'account_setup_incomplete') return 'Account setup is still in progress. Please refresh and try again.'
   if (code === 'checkout_failed')          return "We couldn't start the checkout. Double-check your billing settings."
   if (status >= 500)                       return 'Something went wrong on our end. Please try again in a moment.'
   return 'Something went wrong. Please try again.'
@@ -39,6 +39,20 @@ function userMessage(code: string, status: number): string {
 export default function UpgradeModal({ trigger, requiredPlan, isOpen, onClose, currentPlan }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [planPrices, setPlanPrices] = useState({ starter: '$29/mo', pro: '$49/mo' })
+
+  useEffect(() => {
+    if (!isOpen) return
+    fetch('/api/billing/plans')
+      .then((r) => r.json())
+      .then((data) => {
+        setPlanPrices({
+          starter: `${data.starter.price}${data.starter.period}`,
+          pro:     `${data.pro.price}${data.pro.period}`,
+        })
+      })
+      .catch(() => {}) // keep hardcoded fallback on error
+  }, [isOpen])
 
   // Is the user already at or above the required plan tier?
   const alreadyHasAccess =
@@ -189,7 +203,7 @@ export default function UpgradeModal({ trigger, requiredPlan, isOpen, onClose, c
                   disabled={loading}
                   className="w-full py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors"
                 >
-                  {loading ? 'Redirecting…' : 'Upgrade to Starter — $29/mo'}
+                  {loading ? 'Redirecting…' : `Upgrade to Starter — ${planPrices.starter}`}
                 </button>
               )}
               <button
@@ -201,7 +215,7 @@ export default function UpgradeModal({ trigger, requiredPlan, isOpen, onClose, c
                     : 'text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-100'
                 }`}
               >
-                {loading ? 'Redirecting…' : 'Upgrade to Pro — $49/mo'}
+                {loading ? 'Redirecting…' : `Upgrade to Pro — ${planPrices.pro}`}
               </button>
               <button
                 onClick={onClose}

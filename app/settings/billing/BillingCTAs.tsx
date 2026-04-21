@@ -11,35 +11,11 @@ type SelectablePlan = 'free' | 'starter' | 'pro'
 
 const PLAN_RANK: Record<string, number> = { free: 0, starter: 1, pro: 2, enterprise: 3 }
 
-const PLANS: {
-  id: SelectablePlan
-  name: string
-  price: string
-  period: string
-  highlights: string[]
-}[] = [
-  {
-    id: 'free',
-    name: 'Free',
-    price: '$0',
-    period: 'forever',
-    highlights: ['50 contacts per run', '1 scoring model', 'No CSV export'],
-  },
-  {
-    id: 'starter',
-    name: 'Starter',
-    price: '$29',
-    period: '/mo',
-    highlights: ['Unlimited contacts', '5 scoring models', 'CSV export', 'AI messages'],
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    price: '$49',
-    period: '/mo',
-    highlights: ['Everything in Starter', 'Custom AI templates', 'LinkedIn delivery', '3 team seats'],
-  },
-]
+const PLAN_HIGHLIGHTS: Record<SelectablePlan, string[]> = {
+  free:    ['50 contacts per run', '1 scoring model', 'No CSV export'],
+  starter: ['Unlimited contacts', '5 scoring models', 'CSV export', 'AI messages'],
+  pro:     ['Everything in Starter', 'Custom AI templates', 'LinkedIn delivery', '3 team seats'],
+}
 
 const CREDIT_PACKS: { packId: CreditPackId; credits: number; price: string }[] = [
   { packId: 'credits_100',  credits: 100,  price: '$6'   },
@@ -54,7 +30,7 @@ const CREDIT_PACKS: { packId: CreditPackId; credits: number; price: string }[] =
 
 function userMessage(code: string, status: number): string {
   if (code === 'unauthorized')               return 'You need to be signed in to change your plan.'
-  if (code === 'account_setup_incomplete')   return 'Please finish setting up your workspace first.'
+  if (code === 'account_setup_incomplete')   return 'Account setup is still in progress. Please refresh and try again.'
   if (code === 'checkout_failed')            return "We couldn't start the checkout. Double-check your billing settings."
   if (code === 'no_billing_account')         return 'No billing account linked yet. Contact support if this keeps happening.'
   if (code === 'portal_failed')              return "We couldn't open the billing portal. Try again in a moment."
@@ -66,15 +42,28 @@ function userMessage(code: string, status: number): string {
 // Component
 // ---------------------------------------------------------------------------
 
+interface PlanPrice {
+  name: string
+  price: string
+  period: string
+}
+
 interface Props {
   currentPlan: string
   lsCustomerId: string | null
   creditsBalance: number
+  planPrices: { starter: PlanPrice; pro: PlanPrice }
 }
 
-export default function BillingCTAs({ currentPlan, lsCustomerId, creditsBalance }: Props) {
+export default function BillingCTAs({ currentPlan, lsCustomerId, creditsBalance, planPrices }: Props) {
   const normalised: SelectablePlan =
     currentPlan === 'starter' || currentPlan === 'pro' ? currentPlan : 'free'
+
+  const PLANS = [
+    { id: 'free' as const,    name: 'Free',                  price: '$0',                   period: 'forever', highlights: PLAN_HIGHLIGHTS.free    },
+    { id: 'starter' as const, name: planPrices.starter.name, price: planPrices.starter.price, period: planPrices.starter.period, highlights: PLAN_HIGHLIGHTS.starter },
+    { id: 'pro' as const,     name: planPrices.pro.name,     price: planPrices.pro.price,     period: planPrices.pro.period,     highlights: PLAN_HIGHLIGHTS.pro     },
+  ]
 
   const [selected, setSelected] = useState<SelectablePlan>(normalised)
   const [loading, setLoading]   = useState<string | null>(null)
