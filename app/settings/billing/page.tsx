@@ -1,22 +1,36 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/app/lib/auth'
 import prisma from '@/app/lib/prisma'
+import { fetchVariantDetails } from '@/app/lib/billing'
 import AppHeader from '@/app/components/AppHeader'
 import BillingCTAs from './BillingCTAs'
 
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
 const PLAN_LABEL: Record<string, string> = {
-  free: 'Free',
-  starter: 'Starter',
-  pro: 'Pro',
+  free:       'Free',
+  starter:    'Starter',
+  pro:        'Pro',
   enterprise: 'Enterprise',
 }
 
 const PLAN_PRICE: Record<string, string> = {
-  free: '$0 / mo',
-  starter: '$29 / mo',
-  pro: '$49 / mo',
+  free:       '$0 / mo',
+  starter:    '$29 / mo',
+  pro:        '$49 / mo',
   enterprise: 'Custom pricing',
 }
+
+const FALLBACK_PLAN_PRICES = {
+  starter: { price: '$29', period: '/mo', name: 'Starter' },
+  pro:     { price: '$49', period: '/mo', name: 'Pro'     },
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function formatDate(d: Date) {
   return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
@@ -39,41 +53,80 @@ function StatusBadge({ status }: { status: string }) {
     unpaid:   'Unpaid',
     expired:  'Expired',
   }
-  const cls = styles[status] ?? styles.active
   return (
-    <span className={`inline-flex items-center text-xs font-medium border px-2.5 py-1 rounded-full ${cls}`}>
+    <span className={`inline-flex items-center text-xs font-medium border px-2.5 py-1 rounded-full ${styles[status] ?? styles.active}`}>
       {labels[status] ?? status}
     </span>
   )
 }
 
-export default async function BillingPage({
-  searchParams,
-}: {
-  searchParams: { success?: string }
-}) {
+async function fetchPlanPrices() {
+  const starterVariantId = process.env.LEMONSQUEEZY_STARTER_VARIANT_ID
+  const proVariantId     = process.env.LEMONSQUEEZY_PRO_VARIANT_ID
+  if (!starterVariantId || !proVariantId) return FALLBACK_PLAN_PRICES
+
+  const [starter, pro] = await Promise.allSettled([
+    fetchVariantDetails(starterVariantId),
+    fetchVariantDetails(proVariantId),
+  ])
+
+  function fmt(
+    r: PromiseSettledResult<{ name: string; price: number; interval: 'month' | 'year' | null }>,
+    fallback: typeof FALLBACK_PLAN_PRICES.starter,
+  ) {
+    if (r.status !== 'fulfilled') return fallback
+    const v = r.value
+    return {
+      name:   v.name,
+      price:  `$${Math.round(v.price / 100)}`,
+      period: v.interval === 'month' ? '/mo' : v.interval === 'year' ? '/yr' : '',
+    }
+  }
+
+  return {
+    starter: fmt(starter, FALLBACK_PLAN_PRICES.starter),
+    pro:     fmt(pro,     FALLBACK_PLAN_PRICES.pro),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
+export default async function BillingPage() {
   const session = await auth()
   if (!session) redirect('/auth/signin?callbackUrl=/settings/billing')
 
-  const orgId = session.user.orgId
-  if (!orgId) redirect('/onboarding')
+  let orgId = session.user.orgId
+  if (!orgId) {
+    // Org bootstrap may have failed at sign-in — create it now and reload so
+    // the session callback picks up the new orgId on the next request.
+    try {
+      const org = await prisma.organization.create({ data: { plan: 'free' } })
+      await prisma.user.update({
+        where: { id: session.user.id },
+        data:  { orgId: org.id, role: 'admin' },
+      })
+    } catch { /* ignore — will redirect below */ }
+    redirect('/settings/billing')
+  }
 
-  const [org, subscription] = await Promise.all([
+  const [org, subscription, planPrices] = await Promise.all([
     prisma.organization.findUnique({
-      where: { id: orgId },
+      where:  { id: orgId },
       select: { plan: true, managedCreditsBalance: true, lsCustomerId: true, name: true },
     }),
     prisma.subscription.findUnique({
-      where: { orgId },
+      where:  { orgId },
       select: { plan: true, status: true, currentPeriodEnd: true, cancelAtPeriodEnd: true },
     }),
+    fetchPlanPrices(),
   ])
 
   if (!org) redirect('/')
 
-  const plan = org.plan as string
+  const plan   = org.plan as string
   const isFree = plan === 'free'
-  const showSuccess = searchParams.success === '1'
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -84,21 +137,8 @@ export default async function BillingPage({
 
       <main className="max-w-2xl mx-auto px-4 py-10 space-y-6">
 
-        {/* Success banner */}
-        {showSuccess && (
-          <div className="flex items-start gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
-            <svg className="w-4 h-4 text-green-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-sm text-green-800">
-              Payment received — your plan will be updated shortly.
-            </p>
-          </div>
-        )}
-
-        {/* Plan card */}
+        {/* ── Plan card ──────────────────────────────────────────────────── */}
         <section className="bg-white border border-gray-200 rounded-2xl p-6 space-y-5">
-          {/* Plan header */}
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wide font-medium mb-1">Current plan</p>
@@ -118,7 +158,6 @@ export default async function BillingPage({
             </div>
           </div>
 
-          {/* Renewal / cancellation date */}
           {subscription?.currentPeriodEnd && !subscription.cancelAtPeriodEnd && (
             <p className="text-xs text-gray-400">
               Renews {formatDate(subscription.currentPeriodEnd)}
@@ -130,7 +169,6 @@ export default async function BillingPage({
             </p>
           )}
 
-          {/* Free plan info block */}
           {isFree && (
             <div className="p-3 bg-gray-50 rounded-xl">
               <p className="text-sm text-gray-600">
@@ -140,11 +178,11 @@ export default async function BillingPage({
             </div>
           )}
 
-          {/* All interactive billing CTAs — client component */}
           <BillingCTAs
-            plan={plan}
+            currentPlan={plan}
             lsCustomerId={org.lsCustomerId ?? null}
             creditsBalance={org.managedCreditsBalance}
+            planPrices={planPrices}
           />
         </section>
 

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useSession } from 'next-auth/react'
+import { useSession, signIn } from 'next-auth/react'
 import UploadForm, { type ConfirmedUpload } from '@/app/components/UploadForm'
 import EnrichmentChoice from './components/EnrichmentChoice'
 import EnrichmentProgress from './components/EnrichmentProgress'
@@ -12,7 +12,7 @@ import AppHeader from './components/AppHeader'
 export default function HomePage() {
   const router = useRouter()
   const { data: session, status } = useSession()
-  const [stage, setStage] = useState<'upload' | 'choose' | 'enriching'>('upload')
+  const [stage, setStage] = useState<'upload' | 'choose' | 'enriching' | 'link-sent'>('upload')
   const [confirmed, setConfirmed] = useState<ConfirmedUpload | null>(null)
   const [notifyEmail, setNotifyEmail] = useState<string | null>(null)
   const [enrichError, setEnrichError] = useState<string | null>(null)
@@ -52,6 +52,24 @@ export default function HomePage() {
       return
     }
 
+    // We already know their email from the notify-me step — send the magic link
+    // so they don't have to re-enter it. The cookie carries the score-page URL
+    // through the confirmed → score flow.
+    if (notifyEmail && status !== 'authenticated') {
+      try {
+        document.cookie = `auth_next=${encodeURIComponent(`/run/${runId}/score`)}; path=/; max-age=600; SameSite=Lax`
+        const result = await signIn('resend', {
+          email:       notifyEmail,
+          redirect:    false,
+          callbackUrl: '/auth/confirmed',
+        })
+        if (!result?.error) {
+          setStage('link-sent')
+          return
+        }
+      } catch { /* fall through to normal redirect on error */ }
+    }
+
     router.push(`/run/${runId}/score`)
   }
 
@@ -61,6 +79,39 @@ export default function HomePage() {
 
   const clearModel = () => {
     setSelectedModel(null)
+  }
+
+  // -- Magic-link sent (non-logged-in notify-me flow) -------------------------
+  if (stage === 'link-sent' && notifyEmail) {
+    return (
+      <main className="min-h-screen bg-gray-50">
+        <AppHeader userEmail={null} />
+        <div className="flex items-center justify-center px-4 py-24">
+          <div className="w-full max-w-sm text-center">
+            <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-6 h-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h1 className="text-lg font-semibold text-gray-900 mb-1">Check your inbox</h1>
+            <p className="text-sm text-gray-500">
+              Enrichment complete! We sent a sign-in link to{' '}
+              <span className="font-medium text-gray-700">{notifyEmail}</span>.
+              Click it to score your contacts.
+            </p>
+            <p className="mt-4 text-xs text-gray-400">
+              Didn&apos;t receive it?{' '}
+              <button
+                onClick={() => { setStage('upload'); setNotifyEmail(null); setConfirmed(null) }}
+                className="text-blue-600 hover:underline"
+              >
+                Start over
+              </button>
+            </p>
+          </div>
+        </div>
+      </main>
+    )
   }
 
   // -- Pre-enrichment choice --------------------------------------------------
