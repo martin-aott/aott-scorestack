@@ -13,7 +13,6 @@ declare module "next-auth" {
       email?: string | null;
       image?: string | null;
       orgId: string | null;
-      orgName: string | undefined;
       role: UserRole;
     };
   }
@@ -42,25 +41,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     // Attach custom user fields to the session so they're available
     // client-side via useSession() and server-side via auth().
-    // orgName is used to detect first-time users (value === "My Workspace").
     async session({ session, user }) {
-      const orgId = (user as { orgId?: string | null }).orgId ?? null;
-      let orgName: string | undefined;
-      if (orgId) {
-        const org = await prisma.organization.findUnique({
-          where: { id: orgId },
-          select: { name: true },
-        });
-        orgName = org?.name ?? undefined;
-      }
+      // Re-read from DB rather than trusting the adapter's snapshot. The signIn
+      // callback that bootstraps the org runs after the adapter reads the user,
+      // so the snapshot's orgId is null on first sign-in.
+      const dbUser = await prisma.user.findUnique({
+        where:  { id: user.id },
+        select: { orgId: true, role: true },
+      });
+      const orgId = dbUser?.orgId ?? null;
       return {
         ...session,
         user: {
           ...session.user,
-          id: user.id,
+          id:   user.id,
           orgId,
-          orgName,
-          role: ((user as { role?: string }).role ?? "member") as UserRole,
+          role: ((dbUser?.role ?? "member") as UserRole),
         },
       };
     },
