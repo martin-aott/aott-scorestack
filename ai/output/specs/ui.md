@@ -32,9 +32,10 @@
 - **Already authenticated** → server-side `redirect(callbackUrl)` immediately, form never shown
 
 **Notes:**
-- No sign-up page — first sign-in creates the account automatically
-- `SignInForm` wraps the `callbackUrl` through `/auth/confirmed?next=<callbackUrl>` before calling `signIn()`. This routes every magic-link sign-in through the confirmation page.
-- The page is a server component: `auth()` is called before rendering. If a session exists, the user is redirected straight to `callbackUrl` (bypasses the confirmation page — they're already signed in).
+- No sign-up page — first sign-in creates the account automatically.
+- `SignInPage` (server component) sets an `auth_next` cookie (`encodeURIComponent(destination); max-age=600; SameSite=Lax`) then passes `callbackUrl: '/auth/confirmed'` to `SignInForm`. Magic-link is sent to `/auth/confirmed`; the confirmed page reads the cookie and redirects to the real destination.
+- If a session already exists: server component `redirect(destination)` immediately — form never shown.
+- `/auth/verified` still exists for `SaveModelButton`'s direct-to-NextAuth callbackUrl path (passes `next` as query param). It decodes `searchParams.next` before the `startsWith('/')` guard.
 
 ---
 
@@ -62,22 +63,13 @@
 
 ---
 
-### 2. Onboarding (`/onboarding`)
+### 2. Onboarding (`/onboarding`) — **Removed**
 
-**Trigger:** `session.user.orgName === "My Workspace"`. Auth-required server components render `<WorkspaceNamePrompt>` as a fixed overlay (`z-50`) on the current page — the user never navigates away. `router.refresh()` after a successful `PATCH /api/org` re-runs the server component, the session callback fetches the updated `orgName` from DB, and the overlay unmounts. `/onboarding` exists as a standalone fallback for direct navigation only.
+The workspace naming concept has been removed. There is no onboarding step.
 
-**Layout:** Centered card, max-w-sm, same visual language as the sign-in page.
+`/onboarding` is a stub that `redirect('/')` — kept only for backward-compatibility with any existing links. Orgs are bootstrapped automatically in the `signIn` callback; `orgName` is an internal DB default (`"My Workspace"`) never shown to users.
 
-**Content:**
-- Heading: "Name your workspace"
-- Sub-copy: "This is how your team and scoring models will be labelled."
-- Text input — label: "Workspace name", placeholder: derived from email domain (e.g. `martin@acme.com` → `"Acme"`)
-- CTA button: "Get started"
-- States: Default → Submitting → overlay dismissed via `router.refresh()`
-
-**Validation:** Non-empty, ≤ 80 characters.
-
-**On submit:** `PATCH /api/org { name }` → on 200: `router.refresh()` (inline) or `router.push(callbackUrl)` (standalone page).
+**Future plan:** Replace with a company LinkedIn URL input in org settings, used to provide scoring context to the AI model.
 
 ---
 
@@ -134,7 +126,18 @@ No `resetDate` or `contactsUsedThisMonth` — the quota model uses a per-run cap
 - "Notify me" expands email input on click → submit passes `notify_email` in `POST /api/enrich` → transitions to `EnrichmentProgress`
 - `EnrichmentProgress` shows bottom banner when `notifyEmail` prop is set: "We'll email {email} when results are ready. You can safely close this tab."
 
-**Completion email** (sent by server when enrichment finishes with `notifyEmail` set):
+**In-browser completion (browser still open, user unauthenticated):**
+- When the SSE `complete` event fires and `notifyEmail` is set (user is not signed in):
+  - Client sets `auth_next` cookie to `/run/:runId/score`
+  - Client calls `signIn('resend', { email: notifyEmail, redirect: false })` silently
+  - Transitions to `link-sent` stage:
+    - Green envelope icon
+    - Heading: "Check your inbox"
+    - Copy: "Enrichment complete! We sent a sign-in link to {notifyEmail}. Click it to score your contacts."
+    - "Didn't receive it? Start over" link
+  - No second email prompt — the email from `EnrichmentChoice` is reused
+
+**Completion email** (sent by server when enrichment finishes with `notifyEmail` set — covers the "navigated away" case):
 - **Single CTA: "Sign in to view your results →"** → `/auth/signin?callbackUrl=/run/:runId/score`
 - No direct results link — clicking the sign-in link verifies the user and grants a session in one step
 
@@ -287,8 +290,10 @@ Add a tab bar below the run summary:
 - Subscription status badge (active / trialing / past_due)
 - Renewal date (from `Subscription.currentPeriodEnd`; hidden on Free)
 
-**Success state (after Lemon Squeezy redirect with `?success=1`):**
-- Green banner: "You're now on the {plan} plan. Enjoy!"
+**Post-checkout confirmation page** (`/settings/billing/confirmation`):
+- Lemon Squeezy redirects here after payment (no query params — PendingCheckout pattern)
+- Shows: green checkmark, "Welcome to {plan}!" heading, feature highlights list
+- CTAs: "Go to dashboard" + "View billing settings"
 
 ---
 
@@ -348,8 +353,10 @@ Main flows:
   /settings/billing     Billing
   /settings/team        Team management
   /auth/signin          Sign in
-  /auth/confirmed       Post-login confirmation (auto-redirects to next)
-  /onboarding           First-run workspace setup (standalone fallback)
+  /auth/confirmed       Post-login confirmation (auto-redirects to auth_next cookie destination)
+  /auth/verified        SaveModelButton direct-to-NextAuth redirect landing
+  /settings/billing/confirmation  Post-checkout confirmation (PendingCheckout pattern)
+  /onboarding           Stub — redirect('/') only
 ```
 
 ---
@@ -362,12 +369,13 @@ Main flows:
 | EnrichmentProgress | `app/components/EnrichmentProgress.tsx` | ✅ Built — `notifyEmail` prop, confirmation banner |
 | EmailGate | `app/components/EmailGate.tsx` | ⚠️ Retired — soft email gate replaced by session requirement |
 | NotificationCheckGate | `app/components/NotificationCheckGate.tsx` | ⚠️ Retired — replaced by session gate on score/results pages |
-| WorkspaceNamePrompt | `app/components/WorkspaceNamePrompt.tsx` | ✅ Built — fixed overlay; `router.refresh()` on submit |
+| WorkspaceNamePrompt | `app/components/WorkspaceNamePrompt.tsx` | ❌ Removed — workspace concept removed |
 | SaveModelButton | `app/components/SaveModelButton.tsx` | ✅ Built — authenticated state only |
 | SaveModelModal | `app/components/SaveModelModal.tsx` | ✅ Built — 409 upgrade prompt inline |
 | ActivationBanner | `app/components/ActivationBanner.tsx` | ✅ Built — shown on `?activated=1`, cleans URL |
 | UsageBanner | `app/components/UsageBanner.tsx` | Not started |
-| UpgradeModal | `app/components/UpgradeModal.tsx` | Not started |
+| UpgradeModal | `app/components/UpgradeModal.tsx` | ✅ Built — plan comparison table + checkout CTA |
+| BillingCTAs | `app/settings/billing/BillingCTAs.tsx` | ✅ Built — plan selector, portal link, credit packs |
 | ExportButton | `app/components/ExportButton.tsx` | Not started |
 | MessagesTab | `app/components/MessagesTab.tsx` | Not started |
 | MessageTemplateModal | `app/components/MessageTemplateModal.tsx` | Not started |

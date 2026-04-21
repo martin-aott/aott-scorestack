@@ -1,5 +1,5 @@
 # Scorestack — Product Specification (Growth)
-_Last refined: SPEC::REFINE Phase 3 post-mvp — Pro price $49, credit pack checkout + webhook, usage API shape, billing/upgrade UI copy_
+_Last refined: SPEC::REFINE Phase 3 post-billing — workspace concept removed, cookie-based auth_next flow, in-browser notify-me "Check your inbox" UX, PendingCheckout billing confirmation pattern_
 
 ## Overview
 
@@ -70,7 +70,14 @@ Scorestack automates the full pipeline:
 
 `EnrichmentChoice` offers a "Notify me by email" option for users who want to close the tab:
 - Email input revealed on selection; on submit, `notify_email` is included in the `POST /api/enrich` body and stored in `Run.notifyEmail`
-- On enrichment completion: Resend sends a "Your results are ready" email with a single CTA: **"Sign in to view your results →"** → `/auth/signin?callbackUrl=/run/:id/score`
+
+**If the browser is still open when enrichment completes (unauthenticated):**
+- Client silently fires a magic link to the already-known email (no second email prompt)
+- Sets `auth_next` cookie to `/run/:id/score` before calling `signIn()`
+- Shows "Check your inbox" screen with the email address displayed
+
+**If the user navigated away:** Resend sends a "Your results are ready" email with a single CTA: **"Sign in to view your results →"** → `/auth/signin?callbackUrl=/run/:id/score`. Clicking the link creates a session and routes through `/auth/confirmed` → score page.
+
 - If already signed in when clicking the link: `/auth/signin` redirects to `callbackUrl` immediately (no form shown)
 
 #### Session gate (score + results pages)
