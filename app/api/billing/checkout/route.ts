@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/app/lib/auth'
+import prisma from '@/app/lib/prisma'
 import { createCheckout } from '@/app/lib/billing'
 
 const Schema = z.object({
@@ -17,9 +18,22 @@ export async function POST(req: Request) {
   const parsed = Schema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 })
 
+  const { plan } = parsed.data
+
   try {
-    const checkout_url = await createCheckout(orgId, parsed.data.plan)
-    return NextResponse.json({ checkout_url })
+    const checkout = await createCheckout(orgId, plan)
+
+    await prisma.pendingCheckout.create({
+      data: {
+        orgId,
+        userId:       session.user.id,
+        lsCheckoutId: checkout.checkoutId,
+        variantId:    checkout.variantId,
+        plan:         plan as 'starter' | 'pro',
+      },
+    })
+
+    return NextResponse.json({ checkout_url: checkout.url })
   } catch (err) {
     console.error('[billing/checkout]', err)
     return NextResponse.json({ error: 'checkout_failed' }, { status: 502 })
