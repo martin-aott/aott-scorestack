@@ -89,11 +89,12 @@ model User {
   role          UserRole  @default(member)
   orgId         String?   @map("org_id")
 
-  org           Organization? @relation(fields: [orgId], references: [id])
-  accounts      Account[]
-  sessions      Session[]
-  runs          Run[]
-  scoringModels ScoringModel[]
+  org              Organization?    @relation(fields: [orgId], references: [id])
+  accounts         Account[]
+  sessions         Session[]
+  runs             Run[]
+  scoringModels    ScoringModel[]
+  pendingCheckouts PendingCheckout[]
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -167,6 +168,7 @@ model Organization {
 model PendingCheckout {
   id           String    @id @default(cuid())
   orgId        String    @map("org_id")
+  userId       String    @map("user_id")
   lsCheckoutId String    @unique @map("ls_checkout_id")
   variantId    String    @map("variant_id")
   plan         Plan?                   // set for subscription checkouts
@@ -174,9 +176,10 @@ model PendingCheckout {
   confirmedAt  DateTime? @map("confirmed_at")
   createdAt    DateTime  @default(now()) @map("created_at")
 
-  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId],  references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([orgId, createdAt])
+  @@index([orgId, userId, createdAt])
   @@map("pending_checkouts")
 }
 
