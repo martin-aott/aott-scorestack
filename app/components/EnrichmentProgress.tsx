@@ -74,7 +74,7 @@ export default function EnrichmentProgress({
   const [estimatedRemainingMs, setEstimatedRemainingMs] = useState<number>(0)
   const [avgMsPerContact, setAvgMsPerContact] = useState<number>(0)
 
-  const [runId, setRunId] = useState<string | null>(null)
+  const [, setRunId] = useState<string | null>(null)
 
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null)
   const abortRef = useRef<AbortController | null>(null)

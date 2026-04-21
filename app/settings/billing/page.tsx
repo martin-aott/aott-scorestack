@@ -97,7 +97,7 @@ export default async function BillingPage() {
   const session = await auth()
   if (!session) redirect('/auth/signin?callbackUrl=/settings/billing')
 
-  let orgId = session.user.orgId
+  const orgId = session.user.orgId
   if (!orgId) {
     // Org bootstrap may have failed at sign-in — create it now and reload so
     // the session callback picks up the new orgId on the next request.
