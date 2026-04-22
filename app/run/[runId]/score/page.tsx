@@ -62,6 +62,7 @@ export default async function ScorePage({ params }: ScorePageProps) {
     <>
       <AppHeader
         userEmail={session.user.email}
+        plan={session.user.plan}
         breadcrumb={[
           { label: run.originalFilename, href: '/' },
           { label: 'Define criteria' },

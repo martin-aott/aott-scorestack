@@ -7,37 +7,58 @@ Enrichment of large contact lists can take several minutes. Users should not be 
 
 ### Session gate rules
 
-Three-tier gate applied in every auth-required server component:
+Applied in every auth-required server component:
 
-| Page | No session | Session + "My Workspace" | Session + named workspace |
-|------|-----------|--------------------------|--------------------------|
-| `/` (upload + enrichment choice) | Public | Show normally | Show normally |
-| `/run/:id/score` | `redirect('/auth/signin?callbackUrl=/run/:id/score')` | `WorkspaceNamePrompt` overlay | Show page |
-| `/run/:id/results` | Inline sign-in prompt — not a redirect | `WorkspaceNamePrompt` overlay | Show page |
-| `/settings/*` | `redirect('/auth/signin')` | `WorkspaceNamePrompt` overlay | Show page |
-| `/onboarding` | `redirect('/auth/signin')` | Show standalone onboarding screen | `redirect('/')` |
+| Page | No session | Authenticated |
+|------|-----------|---------------|
+| `/` (upload + enrichment choice) | Public | Show normally |
+| `/run/:id/score` | `redirect('/auth/signin?callbackUrl=/run/:id/score')` | Show page |
+| `/run/:id/results` | Inline sign-in prompt — not a redirect | Show page |
+| `/settings/*` | `redirect('/auth/signin')` | Show page |
+| `/onboarding` | — | `redirect('/')` (stub redirect — workspace concept removed) |
 
-### Onboarding gate
+### Org bootstrap
 
-**Detection:** `session.user.orgName === "My Workspace"` — the default name set by the `signIn` callback during org auto-bootstrap.
+Orgs are created automatically in the `signIn` callback (NextAuth) when a user first authenticates. If `session.user.orgId` is null on the billing page (race condition on first sign-in), the billing page creates the org lazily and self-redirects so the session callback re-reads `orgId` on the next request.
 
-**Where applied:** Auth-required server components pass `show={session?.user?.orgName === "My Workspace"}` to `<WorkspaceNamePrompt email={session.user.email} show={...} />`. The component renders as a fixed full-screen overlay (`z-50`). On successful `PATCH /api/org`, it calls `router.refresh()` — the server component re-runs, the session callback fetches the updated `orgName` from DB, `show` becomes `false`, and the overlay unmounts. No navigation occurs; the user stays on their destination page. The standalone `/onboarding` page remains as a fallback for direct navigation.
+There is no workspace-naming step. `Organization.name` defaults to `"My Workspace"` (DB default) and is never shown to users. The org name is an internal label only. Future plan: replace with company LinkedIn URL input for scoring context.
 
-**`PATCH /api/org` — workspace name update:**
-- Auth required
-- Body: `{ name: string }`
-- Validates: non-empty, ≤ 80 chars
-- Updates `Organization.name` for `session.user.orgId`
-- Returns `200 { name }`
-
-**Session shape** — the JWT and session callbacks must expose `orgName`:
+**Session shape:**
 ```ts
-// JWT callback (load on sign-in):
-token.orgName = (await prisma.organization.findUnique({ where: { id: user.orgId } }))?.name
-
-// Session callback:
-session.user.orgName = token.orgName as string | undefined
+session.user = {
+  id:    string
+  email: string | null
+  orgId: string | null   // null only on first sign-in race; billing page handles this
+  role:  'admin' | 'member'
+  plan:  'free' | 'starter' | 'pro' | 'enterprise'  // defaults to 'free' if no org or DB error
+}
+// orgName is NOT exposed in the session
 ```
+
+### Auth flow (magic link)
+
+All magic-link sign-ins follow the same pattern regardless of trigger:
+
+1. **`SignInPage`** (`/auth/signin`): sets `auth_next` cookie (`encodeURIComponent(destination); max-age=600; SameSite=Lax`) AND calls `signIn('resend', { callbackUrl: '/auth/confirmed?next=<encodeURIComponent(destination)>' })`. Destination is encoded in **both** the cookie and the URL param so the flow works correctly even when the magic link is opened on a different device (where the cookie is absent).
+2. NextAuth sends the magic link. On click, NextAuth creates the session and redirects to `/auth/confirmed?next=<encodedDestination>`.
+3. **`/auth/confirmed`** (server component): reads `next` from `searchParams.next` first (URL param, open-redirect guard: `startsWith('/')`), falls back to `auth_next` cookie, defaults to `/`. Passes destination to `ConfirmedClient`.
+4. **`ConfirmedClient`**: shows "You're signed in" + 2.5s progress bar → `router.push(destination)`. Clears `auth_next` cookie on mount.
+5. **`/auth/verified`** still exists for `SaveModelButton`'s direct-to-NextAuth callbackUrl path. It decodes `searchParams.next` (`decodeURIComponent` before `startsWith('/')` check) and redirects.
+
+If already authenticated when reaching `/auth/signin`: server component `redirect(destination)` immediately.
+
+### Session callback resilience
+
+The `session` callback in `auth.ts` wraps its `prisma.user.findUnique` call in a `try/catch`. On DB failure it returns the session with `orgId: null`, `role: 'member'`, and `plan: 'free'` rather than propagating the exception. This prevents a cold-start DB hiccup from crashing any page that calls `auth()` and producing a Vercel NOT_FOUND.
+
+The query joins the org relation in a single round-trip:
+```ts
+prisma.user.findUnique({
+  where:  { id: user.id },
+  select: { orgId: true, role: true, org: { select: { plan: true } } },
+})
+```
+`plan` is read from `dbUser.org.plan` (defaults to `'free'` if no org).
 
 ### Pre-enrichment notification (optional, non-blocking)
 
@@ -46,8 +67,16 @@ session.user.orgName = token.orgName as string | undefined
 - On enrichment completion, if `Run.notifyEmail` is set and `EnrichmentNotification` row does not exist:
   - Call `sendEnrichmentComplete(email, runId)` — sends single-CTA sign-in email: **"Sign in to view your results →"** → `/auth/signin?callbackUrl=/run/:runId/score`
   - Create `EnrichmentNotification { runId, email, sentAt: now() }` to prevent duplicate sends
-- Full sign-in flow: `/auth/signin` → user enters email → `SignInForm` wraps `callbackUrl` through `/auth/confirmed?next=<callbackUrl>` → magic link sent → user clicks → session created → `/auth/confirmed` shows confirmation (2.5s auto-redirect) → `next` destination
-- If already signed in when clicking notify-me email link: `/auth/signin` server component redirects directly to `callbackUrl`, bypassing the confirmation page
+
+**In-browser completion (browser still open, user not authenticated):**
+- When enrichment SSE `complete` event fires and `notifyEmail` is set and `status !== 'authenticated'`:
+  - Client sets `auth_next` cookie to `/run/:runId/score`
+  - Client calls `signIn('resend', { email: notifyEmail, redirect: false, callbackUrl: '/auth/confirmed' })`
+  - On success: transitions to `link-sent` stage — shows "Check your inbox" screen with `notifyEmail` displayed
+  - No second email prompt — the email the user entered in `EnrichmentChoice` is reused
+- If `signIn` fails: fall through to `router.push('/run/:runId/score')` (unauthenticated → sign-in redirect)
+
+**If already signed in when clicking notify-me email link:** `/auth/signin` server component redirects directly to `callbackUrl`, bypassing the confirmation page.
 
 ### List models (`GET /api/models`)
 
@@ -173,12 +202,29 @@ function resolveLinkedApiClient(org) {
 
 ## 2b. Managed Credit Pack Purchase Flow
 
+Credit packs are **feature-flagged** (`ENABLE_CREDITS=true`) and **fully dynamic** — pack options are fetched from a single Lemon Squeezy product whose variants each represent one pack size.
+
+### Credit pack discovery
+
+`fetchCreditPacks()` in `billing.ts`:
+- Reads `LEMONSQUEEZY_CREDITS_PRODUCT_ID` (LS product ID). Returns `[]` if unset.
+- `GET /v1/variants?filter[product_id]=:id&sort=sort` — fetches all variants sorted by LS `sort` field.
+- Filters to `status === 'published'`.
+- Parses `credits` from variant name via `parseInt(attrs.name)` — convention: variant name must start with a number (e.g. `"100 Credits"` → 100). Variants where `parseInt` returns `NaN` or 0 are skipped.
+- Returns `CreditPack[]`: `{ variantId, credits, price (cents), name }`.
+- Cached 1 hour via Next.js `revalidate`.
+
+**Feature flag**: `BillingPage` checks `process.env.ENABLE_CREDITS === 'true'`. If false, passes `creditPacks={null}` to `BillingCTAs`, which hides the section entirely.
+
+### Purchase flow
+
 ```
-User clicks "Buy credits" → selects pack size
+User clicks credit pack button (name + price from LS)
   │
-  └── POST /api/billing/credits { packId }
-        └── Look up pack config (credits, lsProductId)
-        └── Create LS checkout for one-time product with custom_data.orgId + custom_data.credits
+  └── POST /api/billing/credits { variantId, credits }
+        └── createCreditCheckout(orgId, variantId, credits)
+        └── Create LS checkout with custom_data: { orgId, credits }
+        └── INSERT PendingCheckout { orgId, userId, lsCheckoutId, variantId, credits }
         └── Return { checkout_url }
 
 User completes payment on LS-hosted page
@@ -358,15 +404,37 @@ Lemon Squeezy acts as **Merchant of Record** — they collect payments from cust
 
 **v1–v2 only.** Migration to a more scalable processor (Stripe or Paddle) is planned for v3. Keep billing logic isolated in `app/lib/billing.ts` to make the swap low-friction.
 
-### Variant IDs (configured via env vars)
+### Env vars (billing)
 
-- `LEMONSQUEEZY_STARTER_VARIANT_ID` → $29/mo recurring variant
-- `LEMONSQUEEZY_PRO_VARIANT_ID` → $79/mo recurring variant
+| Variable | Purpose |
+|----------|---------|
+| `LEMONSQUEEZY_STARTER_VARIANT_ID` | $29/mo recurring variant ID |
+| `LEMONSQUEEZY_PRO_VARIANT_ID` | $49/mo recurring variant ID |
+| `LEMONSQUEEZY_CREDITS_PRODUCT_ID` | LS product ID whose variants are credit packs (dynamic) |
+| `ENABLE_CREDITS` | Set to `"true"` to show the credits section; unset hides it |
+
+### Plan name strategy
+
+Plan names ("Free", "Starter", "Pro", "Enterprise") are defined in the app code, not pulled from LS. `fetchVariantDetails` returns only `price` and `interval` — the name for a given DB plan enum value is resolved via the `PLAN_LABEL` map wherever a display name is needed. This avoids the LS default variant name `"Default"` leaking into the UI.
+
+Credit pack names DO come from LS (`CreditPack.name = attrs.name` from the variant). Convention: variant names must start with the credit count as a number (e.g. `"100 Credits"`).
+
+### PendingCheckout pattern
+
+Lemon Squeezy does not support URL placeholders in redirect URLs (e.g. `{checkoutId}`), so the checkout ID cannot be encoded in the success redirect. Instead:
+
+1. `POST /api/billing/checkout { plan }` creates a `PendingCheckout` row (`orgId`, `userId`, `lsCheckoutId`, `plan`, `credits`) before redirecting to LS.
+2. LS redirects to `/settings/billing/confirmation` on payment success (no query params needed).
+3. The confirmation page looks up the most recent `PendingCheckout` for the session's `orgId + userId` within a 2-hour window, verifies it with the LS API, and applies the plan/credits if not already confirmed.
+4. This covers both fresh redirects and page refreshes after confirmation — the 2-hour window safely handles both.
+
+`PendingCheckout` is scoped to `orgId + userId` (not just `orgId`) to prevent one org member from confirming another's pending checkout.
 
 ### Checkout session creation
 
 ```
 POST /api/billing/checkout { plan }
+→ Create PendingCheckout { orgId, userId, lsCheckoutId: '', plan, credits: null }
 → POST https://api.lemonsqueezy.com/v1/checkouts
   headers: { Authorization: `Bearer ${LEMONSQUEEZY_API_KEY}` }
   body: {
@@ -377,7 +445,8 @@ POST /api/billing/checkout { plan }
           custom: { orgId }   ← passed back in webhook
         },
         product_options: {
-          redirect_url: `${APP_URL}/settings/billing?success=1`
+          redirect_url: `${APP_URL}/settings/billing/confirmation`
+          // APP_URL = process.env.NEXTAUTH_URL ?? `https://${process.env.VERCEL_URL}` ?? 'http://localhost:3000'
         }
       },
       relationships: {
@@ -386,6 +455,7 @@ POST /api/billing/checkout { plan }
       }
     }
   }
+→ Update PendingCheckout.lsCheckoutId = response.data.id
 → return { checkout_url: response.data.attributes.url }
 ```
 
@@ -444,9 +514,7 @@ POST /api/billing/portal
 3. User clicks "Upgrade to Starter/Pro".
 4. Frontend calls `POST /api/billing/checkout { plan }` → receives `checkout_url`.
 5. Frontend redirects to Lemon Squeezy hosted checkout (full page redirect).
-6. Payment succeeds → Lemon Squeezy redirects to `/settings/billing?success=1`.
-7. LS fires webhook → org plan updated in DB.
-8. `/settings/billing` page fetches `/api/usage` → shows updated plan.
+6. Payment succeeds → LS redirects to `/settings/billing/confirmation`.
+7. Confirmation page finds the `PendingCheckout`, verifies with LS API, updates `Organization.plan` if not already confirmed. LS `subscription_created` webhook arrives shortly after and upserts the `Subscription` row.
+8. User sees the confirmation page ("Welcome to Starter/Pro!") and can navigate to the dashboard or billing settings.
 9. User can now retry the action that was previously gated.
-
-**Optimistic unlock:** After checkout success redirect, the client can optimistically show the new plan while waiting for the webhook to fire (typically fires within 2–5 seconds).

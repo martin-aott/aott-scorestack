@@ -13,8 +13,8 @@ declare module "next-auth" {
       email?: string | null;
       image?: string | null;
       orgId: string | null;
-      orgName: string | undefined;
       role: UserRole;
+      plan: Plan;
     };
   }
   interface User {
@@ -42,26 +42,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     // Attach custom user fields to the session so they're available
     // client-side via useSession() and server-side via auth().
-    // orgName is used to detect first-time users (value === "My Workspace").
     async session({ session, user }) {
-      const orgId = (user as { orgId?: string | null }).orgId ?? null;
-      let orgName: string | undefined;
-      if (orgId) {
-        const org = await prisma.organization.findUnique({
-          where: { id: orgId },
-          select: { name: true },
+      // Re-read from DB rather than trusting the adapter's snapshot. The signIn
+      // callback that bootstraps the org runs after the adapter reads the user,
+      // so the snapshot's orgId is null on first sign-in.
+      let orgId: string | null = null;
+      let role: UserRole = "member";
+      let plan: Plan = "free";
+      try {
+        const dbUser = await prisma.user.findUnique({
+          where:  { id: user.id },
+          select: { orgId: true, role: true, org: { select: { plan: true } } },
         });
-        orgName = org?.name ?? undefined;
+        orgId = dbUser?.orgId ?? null;
+        role  = (dbUser?.role  ?? "member") as UserRole;
+        plan  = (dbUser?.org?.plan ?? "free") as Plan;
+      } catch (err) {
+        console.error("[auth] session callback DB read failed (non-fatal):", err);
       }
       return {
         ...session,
-        user: {
-          ...session.user,
-          id: user.id,
-          orgId,
-          orgName,
-          role: ((user as { role?: string }).role ?? "member") as UserRole,
-        },
+        user: { ...session.user, id: user.id, orgId, role, plan },
       };
     },
 

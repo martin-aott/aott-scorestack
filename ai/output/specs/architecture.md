@@ -212,16 +212,24 @@ Lemon Squeezy is the billing layer for v1 and v2. A migration to a more scalable
 |-------|--------|
 | `subscription_created` | Set org plan, create Subscription row |
 | `subscription_updated` | Update plan, status, renewal date |
-| `subscription_cancelled` | Downgrade org to `free` at period end |
-| `subscription_payment_failed` | Flag org for grace period |
+| `subscription_cancelled` | Set `cancelAtPeriodEnd = true`; actual downgrade fires on `subscription_expired` |
+| `subscription_expired` | Downgrade org to `free`, set `Subscription.status = 'expired'` |
+| `subscription_payment_failed` | Set `Subscription.status = 'past_due'`; 3-day grace before downgrade |
+| `order_created` | Credit pack purchase — add `credits` to `Organization.managedCreditsBalance`, create `CreditPurchase` row |
 
 ### Environment variables
 ```
 LEMONSQUEEZY_API_KEY=
 LEMONSQUEEZY_WEBHOOK_SECRET=
 LEMONSQUEEZY_STORE_ID=
-LEMONSQUEEZY_STARTER_VARIANT_ID=
-LEMONSQUEEZY_PRO_VARIANT_ID=
+LEMONSQUEEZY_STARTER_VARIANT_ID=      # $29/mo subscription variant
+LEMONSQUEEZY_PRO_VARIANT_ID=          # $49/mo subscription variant
+
+# Credit pack one-time product IDs (Lemon Squeezy product — not variant)
+LEMONSQUEEZY_CREDITS_100_PRODUCT_ID=
+LEMONSQUEEZY_CREDITS_500_PRODUCT_ID=
+LEMONSQUEEZY_CREDITS_1500_PRODUCT_ID=
+LEMONSQUEEZY_CREDITS_5000_PRODUCT_ID=
 ```
 
 ---

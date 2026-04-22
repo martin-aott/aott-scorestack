@@ -1,5 +1,5 @@
 # Scorestack — Product Specification (Growth)
-_Last refined: SPEC::REFINE — pre-enrichment choice, activation-aware save flow, BYOK delivery-only_
+_Last refined: SPEC::REFINE Phase 03 — plan names hardcoded in app (not from LS); dynamic credit packs from single LEMONSQUEEZY_CREDITS_PRODUCT_ID product (ENABLE_CREDITS flag); portal "Soon" badge when lsCustomerId not yet set_
 
 ## Overview
 
@@ -70,7 +70,14 @@ Scorestack automates the full pipeline:
 
 `EnrichmentChoice` offers a "Notify me by email" option for users who want to close the tab:
 - Email input revealed on selection; on submit, `notify_email` is included in the `POST /api/enrich` body and stored in `Run.notifyEmail`
-- On enrichment completion: Resend sends a "Your results are ready" email with a single CTA: **"Sign in to view your results →"** → `/auth/signin?callbackUrl=/run/:id/score`
+
+**If the browser is still open when enrichment completes (unauthenticated):**
+- Client silently fires a magic link to the already-known email (no second email prompt)
+- Sets `auth_next` cookie to `/run/:id/score` before calling `signIn()`
+- Shows "Check your inbox" screen with the email address displayed
+
+**If the user navigated away:** Resend sends a "Your results are ready" email with a single CTA: **"Sign in to view your results →"** → `/auth/signin?callbackUrl=/run/:id/score`. Clicking the link creates a session and routes through `/auth/confirmed` → score page.
+
 - If already signed in when clicking the link: `/auth/signin` redirects to `callbackUrl` immediately (no form shown)
 
 #### Session gate (score + results pages)
