@@ -100,7 +100,7 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
   if (run.status !== RunStatus.complete) {
     return (
       <>
-        <AppHeader userEmail={session.user.email} />
+        <AppHeader userEmail={session.user.email} plan={session.user.plan} />
         <main className="bg-gray-50">
           <div className="flex items-center justify-center px-4 py-24 text-center">
             <div>
@@ -161,6 +161,7 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
     <>
       <AppHeader
         userEmail={session.user.email}
+        plan={session.user.plan}
         breadcrumb={[
           { label: run.originalFilename, href: `/run/${runId}/score` },
           { label: 'Results' },

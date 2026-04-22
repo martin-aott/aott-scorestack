@@ -132,6 +132,7 @@ export default async function BillingPage() {
     <div className="min-h-screen bg-gray-50">
       <AppHeader
         userEmail={session.user.email}
+        plan={plan}
         breadcrumb={[{ label: 'Settings' }, { label: 'Billing' }]}
       />
 

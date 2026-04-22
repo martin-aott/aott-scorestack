@@ -36,8 +36,10 @@ function appUrl() {
 // ---------------------------------------------------------------------------
 
 // Cached for 1 hour at the fetch layer so repeated page loads don't hit LS.
+// Fetches with ?include=product so we can use the product name (e.g. "Starter")
+// rather than the default variant name (which LS sets to "Default").
 export async function fetchVariantDetails(variantId: string): Promise<VariantDetails> {
-  const res = await fetch(`${LS_API}/variants/${variantId}`, {
+  const res = await fetch(`${LS_API}/variants/${variantId}?include=product`, {
     headers: lsHeaders(),
     next: { revalidate: 3600 },
   })
@@ -47,9 +49,11 @@ export async function fetchVariantDetails(variantId: string): Promise<VariantDet
   }
   const json = await res.json()
   const attrs = json.data.attributes
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const product = json.included?.find((r: any) => r.type === 'products')
   return {
-    name: attrs.name as string,
-    price: attrs.price as number,
+    name:     (product?.attributes?.name ?? attrs.name) as string,
+    price:    attrs.price as number,
     interval: (attrs.interval ?? null) as 'month' | 'year' | null,
   }
 }

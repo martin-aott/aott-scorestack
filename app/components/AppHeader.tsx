@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useRef, useState } from 'react'
 import { signOut } from 'next-auth/react'
 
 export interface BreadcrumbItem {
@@ -12,9 +13,36 @@ interface AppHeaderProps {
   userEmail?: string | null
   breadcrumb?: BreadcrumbItem[]
   modelName?: string | null
+  plan?: string | null
 }
 
-export default function AppHeader({ userEmail, breadcrumb, modelName }: AppHeaderProps) {
+const PLAN_LABEL: Record<string, string> = {
+  free: 'Free', starter: 'Starter', pro: 'Pro', enterprise: 'Enterprise',
+}
+
+const PLAN_BADGE: Record<string, string> = {
+  free:       'text-gray-500 bg-gray-100',
+  starter:    'text-blue-700 bg-blue-50 border border-blue-100',
+  pro:        'text-purple-700 bg-purple-50 border border-purple-100',
+  enterprise: 'text-amber-700 bg-amber-50 border border-amber-100',
+}
+
+export default function AppHeader({ userEmail, breadcrumb, modelName, plan }: AppHeaderProps) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handleOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [open])
+
+  const planLabel = plan ? (PLAN_LABEL[plan] ?? plan) : null
+  const badgeClass = plan ? (PLAN_BADGE[plan] ?? PLAN_BADGE.free) : ''
+
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-gray-100">
       <div className="max-w-5xl mx-auto px-4 h-12 flex items-center justify-between gap-4">
@@ -50,7 +78,7 @@ export default function AppHeader({ userEmail, breadcrumb, modelName }: AppHeade
           )}
         </div>
 
-        {/* Right: model pill + user */}
+        {/* Right: model pill + user menu */}
         <div className="flex items-center gap-2 shrink-0">
           {modelName && (
             <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-medium text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">
@@ -62,14 +90,72 @@ export default function AppHeader({ userEmail, breadcrumb, modelName }: AppHeade
           )}
 
           {userEmail ? (
-            <div className="flex items-center gap-2">
-              <span className="hidden sm:block text-xs text-gray-500 max-w-[180px] truncate">{userEmail}</span>
+            <div
+              ref={menuRef}
+              className="relative"
+              onMouseEnter={() => setOpen(true)}
+              onMouseLeave={() => setOpen(false)}
+            >
+              {/* Trigger */}
               <button
-                onClick={() => signOut({ callbackUrl: '/' })}
-                className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                type="button"
+                onClick={() => setOpen(v => !v)}
+                className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 -mr-1.5 hover:bg-gray-50 transition-colors"
               >
-                Sign out
+                <span className="hidden sm:block text-xs text-gray-500 max-w-[140px] truncate">
+                  {userEmail}
+                </span>
+                {planLabel && (
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${badgeClass}`}>
+                    {planLabel}
+                  </span>
+                )}
+                <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                </svg>
               </button>
+
+              {/* Dropdown */}
+              {open && (
+                <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50">
+                  {/* User info */}
+                  <div className="px-3 py-2.5 border-b border-gray-100">
+                    <p className="text-xs font-medium text-gray-700 truncate">{userEmail}</p>
+                    {planLabel && (
+                      <span className={`inline-flex mt-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${badgeClass}`}>
+                        {planLabel}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Plan settings */}
+                  <Link
+                    href="/settings/billing"
+                    onClick={() => setOpen(false)}
+                    className="flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Plan settings
+                  </Link>
+
+                  {/* Sign out */}
+                  <div className="border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => { setOpen(false); signOut({ callbackUrl: '/' }) }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+                      </svg>
+                      Sign out
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <Link href="/auth/signin" className="text-xs text-blue-600 hover:underline font-medium">

@@ -14,6 +14,7 @@ declare module "next-auth" {
       image?: string | null;
       orgId: string | null;
       role: UserRole;
+      plan: Plan;
     };
   }
   interface User {
@@ -47,19 +48,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // so the snapshot's orgId is null on first sign-in.
       let orgId: string | null = null;
       let role: UserRole = "member";
+      let plan: Plan = "free";
       try {
         const dbUser = await prisma.user.findUnique({
           where:  { id: user.id },
-          select: { orgId: true, role: true },
+          select: { orgId: true, role: true, org: { select: { plan: true } } },
         });
         orgId = dbUser?.orgId ?? null;
-        role  = (dbUser?.role ?? "member") as UserRole;
+        role  = (dbUser?.role  ?? "member") as UserRole;
+        plan  = (dbUser?.org?.plan ?? "free") as Plan;
       } catch (err) {
         console.error("[auth] session callback DB read failed (non-fatal):", err);
       }
       return {
         ...session,
-        user: { ...session.user, id: user.id, orgId, role },
+        user: { ...session.user, id: user.id, orgId, role, plan },
       };
     },
 

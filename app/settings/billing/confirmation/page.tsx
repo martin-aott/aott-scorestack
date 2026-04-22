@@ -78,6 +78,7 @@ export default async function BillingConfirmationPage() {
     <div className="min-h-screen bg-gray-50">
       <AppHeader
         userEmail={session.user.email}
+        plan={(pending.plan ?? session.user.plan) as string}
         breadcrumb={[{ label: 'Settings' }, { label: 'Billing' }, { label: 'Confirmation' }]}
       />
 
