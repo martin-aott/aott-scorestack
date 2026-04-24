@@ -94,7 +94,8 @@ model User {
   sessions         Session[]
   runs             Run[]
   scoringModels    ScoringModel[]
-  pendingCheckouts PendingCheckout[]
+  pendingCheckouts     PendingCheckout[]
+  enterpriseInquiries  EnterpriseInquiry[]
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -239,6 +240,18 @@ model UsageLog {
   run Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@map("usage_logs")
+}
+
+model EnterpriseInquiry {
+  id        String   @id @default(cuid())
+  userId    String?  @map("user_id")
+  email     String
+  message   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("enterprise_inquiries")
 }
 
 model EnrichmentNotification {
