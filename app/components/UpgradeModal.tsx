@@ -37,10 +37,11 @@ export default function UpgradeModal({ trigger, requiredPlan, isOpen, onClose, c
     pro:     { display: '$49/mo', variantId: null },
   })
   const [checkingOut, setCheckingOut] = useState(false)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
-    fetch('/api/billing/plans')
+    fetch('/api/billing/plans', { cache: 'no-store' })
       .then((r) => r.json())
       .then((data) => {
         setPlanData({
@@ -64,6 +65,7 @@ export default function UpgradeModal({ trigger, requiredPlan, isOpen, onClose, c
   const handleCheckout = useCallback(async (variantId: string | null) => {
     if (!variantId) { window.location.href = '/settings/billing'; return }
     setCheckingOut(true)
+    setCheckoutError(null)
     try {
       const res = await fetch('/api/billing/checkout', {
         method: 'POST',
@@ -71,13 +73,13 @@ export default function UpgradeModal({ trigger, requiredPlan, isOpen, onClose, c
         body: JSON.stringify({ variantId }),
       })
       const data = await res.json()
-      if (data.checkout_url) {
-        window.location.href = data.checkout_url
-      } else {
-        window.location.href = '/settings/billing'
+      if (!res.ok) {
+        setCheckoutError("Couldn't start checkout — please try again or visit billing settings.")
+        return
       }
+      window.location.href = data.checkout_url
     } catch {
-      window.location.href = '/settings/billing'
+      setCheckoutError('Network error — check your connection and try again.')
     } finally {
       setCheckingOut(false)
     }
@@ -184,6 +186,13 @@ export default function UpgradeModal({ trigger, requiredPlan, isOpen, onClose, c
                 </tbody>
               </table>
             </div>
+
+            {/* Checkout error */}
+            {checkoutError && (
+              <p className="mb-3 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                {checkoutError}
+              </p>
+            )}
 
             {/* CTAs */}
             <div className="flex flex-col gap-2">

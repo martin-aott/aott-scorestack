@@ -13,6 +13,7 @@ interface SaveModelButtonProps {
   criteria: Criterion[]
   savedModelName: string | null
   plan?: string
+  runId?: string
   /**
    * When set, the user is known (from notify-me or email-gate flow) but has no
    * session yet. We offer a one-click "send me a sign-in link" action instead of
@@ -21,7 +22,7 @@ interface SaveModelButtonProps {
   knownEmail?: string
 }
 
-export default function SaveModelButton({ criteria, savedModelName, plan, knownEmail }: SaveModelButtonProps) {
+export default function SaveModelButton({ criteria, savedModelName, plan, runId, knownEmail }: SaveModelButtonProps) {
   const { status } = useSession()
   const pathname = usePathname()
   const [showModal, setShowModal] = useState(false)
@@ -176,6 +177,7 @@ export default function SaveModelButton({ criteria, savedModelName, plan, knownE
       {showModal && (
         <SaveModelModal
           criteria={criteria}
+          runId={runId}
           onClose={() => setShowModal(false)}
           onSaved={handleSaved}
         />

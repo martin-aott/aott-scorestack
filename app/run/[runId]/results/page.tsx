@@ -6,7 +6,6 @@ import ResultsTable, { type SerializedResult, type CriterionMeta } from '@/app/c
 import type { CriterionScore, Criterion } from '@/app/lib/scoring'
 import SaveModelButton from '@/app/components/SaveModelButton'
 import ExportButton from '@/app/components/ExportButton'
-import ActivationBanner from '@/app/components/ActivationBanner'
 import AppHeader from '@/app/components/AppHeader'
 import WorkflowStepper from '@/app/components/WorkflowStepper'
 import ResultsTabBar from '@/app/components/ResultsTabBar'
@@ -48,8 +47,6 @@ function deriveCriteria(
   }
   return []
 }
-
-const ACTIVATION_WINDOW_MS = 10 * 60 * 1000
 
 interface ResultsPageProps {
   params: { runId: string }
@@ -121,21 +118,10 @@ export default async function ResultsPage({ params, searchParams }: ResultsPageP
     )
   }
 
-  const [runResults, dbUser] = await Promise.all([
-    prisma.runResult.findMany({
-      where: { runId },
-      orderBy: [{ totalScore: 'desc' }, { rowIndex: 'asc' }],
-    }),
-    prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { emailVerified: true },
-    }),
-  ])
-
-  // Show the activation banner if the user verified their email within the last 10 minutes.
-  const justActivated =
-    !!dbUser?.emailVerified &&
-    Date.now() - dbUser.emailVerified.getTime() < ACTIVATION_WINDOW_MS
+  const runResults = await prisma.runResult.findMany({
+    where: { runId },
+    orderBy: [{ totalScore: 'desc' }, { rowIndex: 'asc' }],
+  })
 
   const scoringCriteria = run.scoringCriteria
   const criteria = deriveCriteria(runResults, scoringCriteria)
@@ -182,9 +168,7 @@ export default async function ResultsPage({ params, searchParams }: ResultsPageP
       <main className="bg-gray-50">
         <div className="max-w-5xl mx-auto px-4 pt-8 pb-16">
 
-          {justActivated && <ActivationBanner />}
-
-          <WorkflowStepper currentStep={3} runId={runId} />
+<WorkflowStepper currentStep={3} runId={runId} />
 
           <div className="mb-4">
             <h1 className="text-xl font-semibold text-gray-900">{run.name ?? run.originalFilename}</h1>
@@ -247,7 +231,16 @@ export default async function ResultsPage({ params, searchParams }: ResultsPageP
             {/* Criteria used */}
             {usedCriteria.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
-                <h2 className="text-xs font-semibold text-gray-700 mb-3">Scoring criteria used</h2>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-xs font-semibold text-gray-700">Scoring criteria used</h2>
+                  <SaveModelButton
+                    criteria={usedCriteria}
+                    savedModelName={run.model?.name ?? null}
+                    knownEmail={run.notifyEmail ?? undefined}
+                    plan={plan}
+                    runId={runId}
+                  />
+                </div>
                 <div className="space-y-2">
                   {usedCriteria.map((c, i) => (
                     <div key={i} className="flex items-center gap-2 text-xs">
@@ -270,15 +263,8 @@ export default async function ResultsPage({ params, searchParams }: ResultsPageP
             )}
           </div>
 
-          {/* Actions row: save model + export */}
-          <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="mb-3">
             <ExportButton runId={runId} plan={plan} />
-            <SaveModelButton
-              criteria={usedCriteria}
-              savedModelName={run.model?.name ?? null}
-              knownEmail={run.notifyEmail ?? undefined}
-              plan={plan}
-            />
           </div>
 
           <ResultsTable results={serialized} criteria={criteria} defaultPageSize={defaultPageSize} shouldBlurContent={isFree} />
