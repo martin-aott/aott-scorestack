@@ -120,8 +120,6 @@ export default function AppHeader({ userEmail, breadcrumb, modelName, plan }: Ap
             <div
               ref={menuRef}
               className="relative"
-              onMouseEnter={() => setOpen(true)}
-              onMouseLeave={() => setOpen(false)}
             >
               {/* Trigger */}
               <button
