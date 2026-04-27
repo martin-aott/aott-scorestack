@@ -5,8 +5,8 @@ import { fetchVariantDetails } from '@/app/lib/billing'
 export const revalidate = 3600
 
 const FALLBACK = {
-  starter: { price: '$29', period: '/mo' },
-  pro:     { price: '$49', period: '/mo' },
+  starter: { price: '$29', period: '/mo', variantId: null as string | null },
+  pro:     { price: '$49', period: '/mo', variantId: null as string | null },
 }
 
 function variantToDisplay(v: { price: number; interval: 'month' | 'year' | null }) {
@@ -30,7 +30,13 @@ export async function GET() {
   ])
 
   return NextResponse.json({
-    starter: starter.status === 'fulfilled' ? variantToDisplay(starter.value) : FALLBACK.starter,
-    pro:     pro.status     === 'fulfilled' ? variantToDisplay(pro.value)     : FALLBACK.pro,
+    starter: {
+      ...(starter.status === 'fulfilled' ? variantToDisplay(starter.value) : FALLBACK.starter),
+      variantId: starterVariantId ?? null,
+    },
+    pro: {
+      ...(pro.status === 'fulfilled' ? variantToDisplay(pro.value) : FALLBACK.pro),
+      variantId: proVariantId ?? null,
+    },
   })
 }

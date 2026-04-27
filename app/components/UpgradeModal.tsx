@@ -29,28 +29,58 @@ const PLAN_FEATURES = [
 ]
 
 export default function UpgradeModal({ trigger, requiredPlan, isOpen, onClose, currentPlan }: Props) {
-  const [planPrices, setPlanPrices] = useState({ starter: '$29/mo', pro: '$49/mo' })
+  const [planData, setPlanData] = useState<{
+    starter: { display: string; variantId: string | null }
+    pro:     { display: string; variantId: string | null }
+  }>({
+    starter: { display: '$29/mo', variantId: null },
+    pro:     { display: '$49/mo', variantId: null },
+  })
+  const [checkingOut, setCheckingOut] = useState(false)
 
   useEffect(() => {
     if (!isOpen) return
     fetch('/api/billing/plans')
       .then((r) => r.json())
       .then((data) => {
-        setPlanPrices({
-          starter: `${data.starter.price}${data.starter.period}`,
-          pro:     `${data.pro.price}${data.pro.period}`,
+        setPlanData({
+          starter: {
+            display:   `${data.starter.price}${data.starter.period}`,
+            variantId: data.starter.variantId ?? null,
+          },
+          pro: {
+            display:   `${data.pro.price}${data.pro.period}`,
+            variantId: data.pro.variantId ?? null,
+          },
         })
       })
-      .catch(() => {}) // keep hardcoded fallback on error
+      .catch(() => {})
   }, [isOpen])
 
-  // Is the user already at or above the required plan tier?
   const alreadyHasAccess =
     currentPlan !== undefined &&
     PLAN_RANK[currentPlan] >= PLAN_RANK[requiredPlan]
 
-  const handleUpgrade = useCallback(() => {
-    window.location.href = '/settings/billing'
+  const handleCheckout = useCallback(async (variantId: string | null) => {
+    if (!variantId) { window.location.href = '/settings/billing'; return }
+    setCheckingOut(true)
+    try {
+      const res = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ variantId }),
+      })
+      const data = await res.json()
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url
+      } else {
+        window.location.href = '/settings/billing'
+      }
+    } catch {
+      window.location.href = '/settings/billing'
+    } finally {
+      setCheckingOut(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -155,25 +185,27 @@ export default function UpgradeModal({ trigger, requiredPlan, isOpen, onClose, c
               </table>
             </div>
 
-            {/* CTAs — only the minimum required plan CTA is primary */}
+            {/* CTAs */}
             <div className="flex flex-col gap-2">
               {requiredPlan === 'starter' && (
                 <button
-                  onClick={handleUpgrade}
-                  className="w-full py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                  onClick={() => handleCheckout(planData.starter.variantId)}
+                  disabled={checkingOut}
+                  className="w-full py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-lg transition-colors"
                 >
-                  {`Upgrade to Starter — ${planPrices.starter}`}
+                  {checkingOut ? 'Redirecting…' : `Upgrade to Starter — ${planData.starter.display}`}
                 </button>
               )}
               <button
-                onClick={handleUpgrade}
-                className={`w-full py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                onClick={() => handleCheckout(planData.pro.variantId)}
+                disabled={checkingOut}
+                className={`w-full py-2.5 text-sm font-medium rounded-lg transition-colors disabled:opacity-60 ${
                   requiredPlan === 'pro'
                     ? 'text-white bg-purple-600 hover:bg-purple-700'
                     : 'text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-100'
                 }`}
               >
-                {`Upgrade to Pro — ${planPrices.pro}`}
+                {checkingOut ? 'Redirecting…' : `Upgrade to Pro — ${planData.pro.display}`}
               </button>
               <button
                 onClick={onClose}
